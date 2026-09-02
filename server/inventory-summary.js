@@ -1363,6 +1363,7 @@ export function buildInventorySummaryModel({
     const slotId = `inventorySummaryFile${slotNumber}`;
     return [slotId, rowsRecord(getRecord, slotId)];
   }));
+  source.fullInventoryFile2 = rowsRecord(getRecord, 'fullInventoryFile2');
   const manualSource = includeManualReconciliation
     ? Object.fromEntries(Array.from({ length: 20 }, (_, index) => {
       const slotId = `inventoryManualFile${index + 1}`;
@@ -2172,11 +2173,11 @@ export function buildInventorySummaryModel({
     });
   });
 
-  source.inventorySummaryFile12.rows.forEach((raw) => {
+  source.fullInventoryFile2.rows.forEach((raw) => {
     const month = normalizeMonth(raw.month);
-    const status = text(raw.deliveryStatus);
+    const status = text(raw.fulfillmentStatus);
     const recognized = status === '是' || status === '否';
-    const qty = recognized ? numeric(raw.remainingQty, '采购跟单', raw.materialCode, '备货剩余数量') : 0;
+    const qty = recognized ? numeric(raw.manualRemainingQty, '采购跟单', raw.materialCode, '备货剩余数量') : 0;
     const reconciliationId = recognized ? expectQuantity('采购跟单', qty, raw.materialCode) : '';
     const product = resolveProduct(raw.materialCode, '采购跟单', raw.materialCode);
     const value = qty * product.product.pretaxPrice;
