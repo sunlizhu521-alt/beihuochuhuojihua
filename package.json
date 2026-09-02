@@ -1,0 +1,37 @@
+{
+  "name": "beihuochuhuojihua",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently \"npm:server\" \"npm:client\"",
+    "client": "vite --host 0.0.0.0",
+    "server": "node server/app.js",
+    "start": "node server/app.js",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "test:inventory-summary": "node --test server/inventory-summary.integration.test.js"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^5.0.0",
+    "bcryptjs": "^3.0.3",
+    "compression": "^1.8.1",
+    "concurrently": "^9.2.1",
+    "cors": "^2.8.5",
+    "exceljs": "^4.4.0",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.5.2",
+    "helmet": "^8.2.0",
+    "multer": "^2.0.2",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "saxes": "^6.0.0",
+    "sql.js": "^1.14.1",
+    "unzipper": "^0.12.5",
+    "vite": "^7.1.5",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "terser": "^5.49.2"
+  }
+}
