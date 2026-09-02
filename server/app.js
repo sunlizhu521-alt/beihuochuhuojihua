@@ -1063,24 +1063,6 @@ function getDimensionRows(slotId) {
   return parseJson(record.rows_json, []);
 }
 
-function orderDataCounts() {
-  return {
-    demands: numberValue(get('SELECT COUNT(*) AS count FROM order_demands')?.count),
-    activeDemands: numberValue(get('SELECT COUNT(*) AS count FROM order_demands WHERE active = 1')?.count),
-    kingdeeOrders: numberValue(get('SELECT COUNT(*) AS count FROM kingdee_orders')?.count),
-    importBatches: numberValue(get('SELECT COUNT(*) AS count FROM kingdee_import_batches')?.count),
-    orderEvents: numberValue(get('SELECT COUNT(*) AS count FROM kingdee_order_events')?.count)
-  };
-}
-
-function assertOrderDataUnchanged(before, message = '维度表操作不能修改采购订单数据') {
-  const after = orderDataCounts();
-  const changed = Object.keys(before).some((key) => before[key] !== after[key]);
-  if (changed) {
-    throw new Error(`${message}，已回滚`);
-  }
-}
-
 function rowAliasValue(row, aliases = []) {
   const sources = [row];
   if (row && typeof row === 'object') {
@@ -1654,45 +1636,6 @@ function beiHuoGongJuData(input = {}, { force = false } = {}) {
 
 
 
-function applyDimensionEnrichment() {
-  const lookups = dimensionLookups();
-  const { productMap, supplierMap } = lookups;
-  const params = all('SELECT * FROM order_demands').map((demand) => {
-    const product = productMap.get(normalize(demand.material_code)) || {};
-    const assignment = resolveAssignment(lookups, demand.supplier, demand.material_code);
-    const supplierSpecificAssignment = resolveSupplierAssignment(lookups, demand.supplier, demand.material_code);
-    const supplierAssignment = supplierMap.get(normalizeMatchPart(demand.supplier)) || {};
-    const supplierSpecificShortName = assignmentSupplierDisplayNames(supplierSpecificAssignment).join('&')
-      || normalize(demand.supplier_short_name);
-    return [
-      normalize(product.sku),
-      normalize(product.logisticsCode),
-      productDimensionMaterialName(product, demand.material_code),
-      normalize(product.productLine),
-      normalize(product.productSeries),
-      supplierSpecificShortName,
-      assignmentGroup(assignment),
-      realPurchaseOwner(assignmentOwner(assignment)) || UNASSIGNED_PURCHASE_OWNER,
-      normalize(assignment.purchaseOrg),
-      demand.demand_key
-    ];
-  });
-  runMany(
-    `UPDATE order_demands
-     SET sku = COALESCE(NULLIF(?, ''), sku),
-         logistics_code = COALESCE(NULLIF(?, ''), logistics_code),
-         material_name = COALESCE(NULLIF(?, ''), material_name),
-         product_line = COALESCE(NULLIF(?, ''), product_line),
-         product_series = COALESCE(NULLIF(?, ''), product_series),
-         supplier_short_name = ?,
-         purchase_group = COALESCE(NULLIF(?, ''), purchase_group),
-         purchase_owner = ?,
-         purchase_org = COALESCE(NULLIF(?, ''), purchase_org)
-     WHERE demand_key = ?`,
-    params
-  );
-}
-
 
 
 
@@ -1800,15 +1743,14 @@ function applyDimensionEnrichment() {
 
 
 function currentAppliedAt() {
-  const batch = get(
-    `SELECT b.applied_at, b.imported_at
-     FROM order_demands d
-     JOIN kingdee_import_batches b ON b.id = d.source_batch_id
-     WHERE d.active = 1
-     ORDER BY COALESCE(NULLIF(b.applied_at, ''), b.imported_at) DESC
+  const record = get(
+    `SELECT updated_at
+     FROM dimension_files
+     WHERE applied = 1
+     ORDER BY updated_at DESC
      LIMIT 1`
   );
-  return normalize(batch?.applied_at) || normalize(batch?.imported_at);
+  return normalize(record?.updated_at);
 }
 
 
@@ -2303,7 +2245,7 @@ app.post('/api/dimensions/:slotId/upload', requireAuth, requireAnyPage(['dimensi
         baseSlotId === 'inventorySummaryFile16' ? selectedSheetNames : sheetName || null,
         { includePreviews: false, stringifyValues: true }
       )
-      : workbookRows(req.file, sheetName || null, { includePreviews: false })
+      : workbookRows(inventorySummaryFile, sheetName || null, { includePreviews: false })
   );
   const rowMapping = slotId === 'spare1' && parsed.columns?.[7]
     ? { ...mapping, level2WarehouseCategory: parsed.columns[7] }
@@ -2487,7 +2429,6 @@ app.post('/api/dimensions/:slotId/upload', requireAuth, requireAnyPage(['dimensi
   }
   const storedMapping = inventoryParsed?.mapping || fullInventoryParsed?.mapping || rowMapping;
   const now = nowText();
-  const beforeOrderCounts = orderDataCounts();
   transaction(() => {
     run(
       `INSERT INTO dimension_files (slot_id, title, file_name, sheet_name, sheet_names, selected_sheet_names, mapping_json, rows_json, applied, uploaded_by, updated_at)
@@ -2495,8 +2436,6 @@ app.post('/api/dimensions/:slotId/upload', requireAuth, requireAnyPage(['dimensi
       ON CONFLICT(slot_id) DO UPDATE SET title = excluded.title, file_name = excluded.file_name, sheet_name = excluded.sheet_name, sheet_names = excluded.sheet_names, selected_sheet_names = excluded.selected_sheet_names, mapping_json = excluded.mapping_json, rows_json = excluded.rows_json, applied = 1, uploaded_by = excluded.uploaded_by, updated_at = excluded.updated_at`,
       [slotId, DIMENSION_SLOTS[slotId] || slotId, safeFilename(req.file), fullInventoryParsed ? '' : inventoryParsed?.sheetName || sheetName, JSON.stringify(parsed.sheetNames), JSON.stringify(fullInventoryParsed ? fullInventoryParsed.selectedSheetNames : !isInventoryManualSlot(slotId) && baseSlotId === 'inventorySummaryFile16' ? selectedSheetNames : []), JSON.stringify(storedMapping), JSON.stringify(rows), req.user.name, now]
     );
-    if (slotId === 'productCategory' || slotId === 'purchaseAssignment') applyDimensionEnrichment();
-    assertOrderDataUnchanged(beforeOrderCounts);
   });
   res.json({
     rowCount: rows.length,
@@ -2510,11 +2449,8 @@ app.post('/api/dimensions/:slotId/upload', requireAuth, requireAnyPage(['dimensi
 });
 
 app.post('/api/dimensions/:slotId/apply', requireAuth, requireAnyPage(['dimensionLibrary', 'businessUnitFeedback', 'wangdianData', 'lingxingInventory', 'inventorySummaryLibrary', 'inventoryManualLibrary', 'firstMileDatabase', 'beiHuoReviewLibrary', 'fullInventoryLibrary']), (req, res) => {
-  const beforeOrderCounts = orderDataCounts();
   transaction(() => {
     run('UPDATE dimension_files SET applied = 1, updated_at = ? WHERE slot_id = ?', [nowText(), req.params.slotId]);
-    if (req.params.slotId === 'productCategory' || req.params.slotId === 'purchaseAssignment') applyDimensionEnrichment();
-    assertOrderDataUnchanged(beforeOrderCounts);
   });
   res.json({ applied: true });
 });
