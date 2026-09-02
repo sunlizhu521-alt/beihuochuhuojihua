@@ -21,7 +21,6 @@ const TOKEN_KEY = 'gendanjinduToken';
 const ACTIVE_PAGE_KEY = 'gendanjinduActivePage';
 
 const PAGE_ORDER = [
-  'inventorySummary',
   'inventoryRisk',
   'supplyPlanBoard',
   'beiHuoGongJu',
@@ -30,12 +29,10 @@ const PAGE_ORDER = [
   'fullInventorySummary',
   'fullInventoryLibrary',
   'inventorySummaryLibrary',
-  'inventoryManualLibrary',
   'dimensionLibrary'
 ];
 
 const PAGE_LABELS = {
-  inventorySummary: '库存汇总',
   inventoryRisk: '供应计划分析',
   supplyPlanBoard: '供应计划工具',
   beiHuoGongJu: '备货工具',
@@ -44,14 +41,13 @@ const PAGE_LABELS = {
   fullInventorySummary: '全量库存汇总',
   fullInventoryLibrary: '全量库存底表',
   inventorySummaryLibrary: '底表文件',
-  inventoryManualLibrary: '手工表库',
   dimensionLibrary: '维度表库'
 };
 
 const NAV_GROUPS = [
   { title: '备货计划', pages: ['supplyPlanBoard', 'inventoryRisk', 'beiHuoGongJu', 'beiHuoReviewLibrary', 'inventoryPurchase'] },
   { title: '全量库存', pages: ['fullInventorySummary', 'fullInventoryLibrary'] },
-  { title: '库存数据', pages: ['inventorySummary', 'inventorySummaryLibrary', 'inventoryManualLibrary'] },
+  { title: '库存数据', pages: ['inventorySummaryLibrary'] },
   { title: '维护数据', pages: ['dimensionLibrary'] }
 ];
 
@@ -253,101 +249,11 @@ const LINGXING_INVENTORY_SLOTS = [
 ];
 
 const INVENTORY_SUMMARY_LIBRARY_SLOTS = [
-  { id: 'inventorySummaryFile1', title: 'FBA库存报表', requiredFields: ['sku', 'warehouseName', 'inventoryAttribute', 'endingInventoryQty'], fields: [
-    ['sku', 'SKU'], ['warehouseName', '仓库名称'], ['inventoryAttribute', '库存属性'], ['endingInventoryQty', '期末库存(含移仓)-数量']
-  ] },
-  { id: 'inventorySummaryFile2', title: 'FBM库存报表', requiredFields: ['identifier', 'warehouseName', 'actualTotalQty'], fields: [
-    ['identifier', '识别码'], ['warehouseName', '仓库名称'], ['actualTotalQty', '实际总量']
-  ] },
-  { id: 'inventorySummaryFile3', title: 'WFS库存报表', requiredFields: ['sku', 'warehouseName', 'totalInventoryQty'], fields: [
-    ['sku', 'SKU'], ['warehouseName', '仓库名称'], ['totalInventoryQty', '总库存数量']
-  ] },
-  { id: 'inventorySummaryFile4', title: 'FBA在途报表', requiredFields: ['storeName', 'sku', 'shipmentStatus', 'dispatchQty', 'shippedQty', 'signedQty'], fields: [
-    ['storeName', '店铺'], ['sku', 'SKU'],
-    ['shipmentStatus', '货件状态'], ['dispatchQty', '发货数量'], ['shippedQty', '已发货'], ['signedQty', '签收量']
-  ] },
-  { id: 'inventorySummaryFile5', title: 'FBM在途报表', requiredFields: ['sku', 'warehouseName', 'receivingWarehouseName', 'documentStatus', 'stockupQty', 'receivedQty'], fields: [
-    ['sku', 'SKU'], ['warehouseName', '发货仓库（单据）'], ['receivingWarehouseName', '收货仓库'], ['documentStatus', '单据状态'],
-    ['stockupQty', '备货数量'], ['receivedQty', '收货数量']
-  ] },
-  { id: 'inventorySummaryFile17', title: 'WFS在途报表', requiredFields: ['sku', 'warehouseName', 'wfsTransitQty'], fields: [
-    ['sku', 'SKU'], ['warehouseName', '仓库名称'], ['wfsTransitQty', '在途数量']
-  ] },
-  { id: 'inventorySummaryFile6', title: '国内在库报表', requiredFields: ['subject', 'warehouseName', 'materialCode', 'domesticStockQty'], fields: [
-    ['subject', '使用组织/库存组织'], ['warehouseName', '仓库名称'],
-    ['materialCode', '物料编码'], ['domesticStockQty', '库存量(主单位)']
-  ] },
-  { id: 'inventorySummaryFile7', title: '京东在库报表', requiredFields: ['jdId', 'jdStockQty'], fields: [
-    ['jdId', 'SKU/京东ID'], ['jdStockQty', '现货库存/全国现货库存']
-  ] },
-  { id: 'inventorySummaryFile14', title: '京东在途', requiredFields: ['materialCode', 'jdTransitQty'], fields: [
-    ['materialCode', '物料编码'], ['jdTransitQty', '在途数量']
-  ] },
-  { id: 'inventorySummaryFile8', title: '销售数据报表', requiredFields: ['date', 'businessUnit', 'materialCode', 'salesQty', 'salesAmount'], fields: [
-    ['date', '日期'], ['businessUnit', '事业部'], ['materialCode', '物料编码'],
-    ['salesQty', '销售数量'], ['salesAmount', '销售金额']
-  ] },
-  { id: 'inventorySummaryFile9', title: 'Dim-领星FBA仓库&金蝶仓库', requiredFields: ['subject', 'lingxingWarehouseName', 'kingdeeWarehouseName'], fields: [
-    ['subject', '主体'], ['lingxingWarehouseName', '领星FBA仓库'],
-    ['kingdeeWarehouseName', '金蝶仓库名称']
-  ] },
-  { id: 'inventorySummaryFile10', title: 'Dim-领星SKU对应物料编码-产品管理', requiredFields: ['lingxingSku', 'identifier'], fields: [
-    ['lingxingSku', 'SKU'], ['identifier', '识别码']
-  ] },
-  { id: 'inventorySummaryFile11', title: 'Dim-京东ID与品号匹配', requiredFields: ['jdId', 'materialCode'], fields: [
-    ['jdId', '京东ID'], ['materialCode', '品号']
-  ] },
-  { id: 'inventorySummaryFile12', title: '采购跟单情况', requiredFields: [
-    'month', 'businessUnit', 'materialCode', 'remainingQty', 'finishedQty', 'unpreparedQty',
-    'preparedNotStartedQty', 'inProductionQty', 'deliveryStatus', 'unfulfilledReason', 'reasonDetail', 'remark'
-  ], fields: [
-    ['month', '下单月份'], ['businessUnit', '事业部'], ['materialCode', '物料编码'],
-    ['remainingQty', '备货剩余数量'], ['finishedQty', '完工未发产品'],
-    ['unpreparedQty', '已下单未备料未生产'], ['preparedNotStartedQty', '已备料未生产'],
-    ['inProductionQty', '生产中产品'], ['deliveryStatus', '是否需正常交货'],
-    ['unfulfilledReason', '未履约原因'], ['reasonDetail', '原因详情'], ['remark', '备注']
-  ] },
-  { id: 'inventorySummaryFile13', title: 'Dim-领星FBA在途&金蝶仓库', requiredFields: ['subject', 'storeName', 'kingdeeWarehouseName'], fields: [
-    ['subject', '主体'], ['storeName', '店铺'], ['kingdeeWarehouseName', '金蝶仓库名称']
-  ] },
-  { id: 'inventorySummaryFile15', title: '销售预测', fields: [], requiresSheetSelection: true },
-  { id: 'inventorySummaryFile16', title: '库龄文件', fields: [], requiredSheetCount: 2 },
   { id: 'inventorySummaryFile18', title: '备用', fields: [] },
   { id: 'inventorySummaryFile19', title: '备用', fields: [] },
-  { id: 'inventorySummaryFile20', title: '备用', fields: [] }
+  { id: 'inventorySummaryFile20', title: '备用', fields: [] },
+  { id: 'inventorySummaryFile21', title: '备用', fields: [] }
 ];
-
-const INVENTORY_MANUAL_SLOT_ORDER = [1, 2, 3, 4, 5, 6, 7, 14, 17, 8, 9, 10, 11, 12, 13, 15, 16, 18, 19, 20];
-const INVENTORY_SUMMARY_SLOT_MAP = new Map(INVENTORY_SUMMARY_LIBRARY_SLOTS.map((slot) => [slot.id, slot]));
-const INVENTORY_MANUAL_LIBRARY_SLOTS = INVENTORY_MANUAL_SLOT_ORDER.map((slotNumber) => INVENTORY_SUMMARY_SLOT_MAP.get(`inventorySummaryFile${slotNumber}`)).map((slot) => ({
-  ...slot,
-  id: slot.id.replace('inventorySummaryFile', 'inventoryManualFile'),
-  title: slot.id === 'inventorySummaryFile17'
-    ? 'WFS在途手工'
-    : slot.id === 'inventorySummaryFile14'
-      ? '京东在途手工'
-    : slot.id === 'inventorySummaryFile8'
-      ? '不可售手工'
-      : /^inventorySummaryFile(?:1[0-6]|1[8-9]|20)$/.test(slot.id) ? '备用' : `${slot.title}手工`,
-  fields: slot.id === 'inventorySummaryFile8'
-    ? [
-      ['businessUnit', '事业部'],
-      ['materialCode', '物料编码'],
-      ['inventoryQty', '在库量'],
-      ['transitQty', '在途量']
-    ]
-    : [
-      ['businessUnit', '事业部'],
-      ['materialCode', '物料编码'],
-      ['quantity', '数量']
-    ],
-  requiredFields: slot.id === 'inventorySummaryFile8'
-    ? ['businessUnit', 'materialCode', 'inventoryQty', 'transitQty']
-    : ['businessUnit', 'materialCode', 'quantity'],
-  requiresSheetSelection: false,
-  requiredSheetCount: 0,
-  manualFieldSelection: true
-}));
 
 const FIRST_MILE_DATABASE_SLOTS = [
   { id: 'firstMileData1', title: '张婷婷头程数据', fields: [], firstMile: true },
@@ -9255,7 +9161,6 @@ function App() {
       <section className={progressStandalone ? 'progress-standalone-content' : 'content'} onClick={(event) => event.stopPropagation()}>
         {message && <p className="message">{message}</p>}
         {demandsLoading && DEMAND_DATA_PAGES.has(activeTab) && <p className="section-count">正在加载采购订单数据...</p>}
-        {shouldMount('inventorySummary') && <PagePane page="inventorySummary" activeTab={activeTab}><InventorySummary token={token} active={activeTab === 'inventorySummary'} /></PagePane>}
         {shouldMount('inventoryRisk') && <PagePane page="inventoryRisk" activeTab={activeTab}><React.Suspense fallback={<div className="loading-fallback">加载中...</div>}><InventoryRiskPage token={token} active={activeTab === 'inventoryRisk'} /></React.Suspense></PagePane>}
         {shouldMount('beiHuoGongJu') && <PagePane page="beiHuoGongJu" activeTab={activeTab}><React.Suspense fallback={<div className="loading-fallback">加载中...</div>}><BeiHuoGongJuPage token={token} active={activeTab === 'beiHuoGongJu'} /></React.Suspense></PagePane>}
         {shouldMount('beiHuoReviewLibrary') && <PagePane page="beiHuoReviewLibrary" activeTab={activeTab}><DimensionLibrary token={token} reloadDemands={reloadDemands} reloadDemandData={false} setMessage={setMessage} title="备货文件导入" slots={BEI_HUO_REVIEW_LIBRARY_SLOTS} gridColumns={4} /></PagePane>}
@@ -9264,7 +9169,6 @@ function App() {
         {shouldMount('supplyPlanBoard') && <PagePane page="supplyPlanBoard" activeTab={activeTab}><React.Suspense fallback={<div className="loading-fallback">加载中...</div>}><SupplyPlanBoard token={token} active={activeTab === 'supplyPlanBoard'} /></React.Suspense></PagePane>}
         {shouldMount('inventoryPurchase') && <PagePane page="inventoryPurchase" activeTab={activeTab}><InventoryPurchaseFilePage token={token} active={activeTab === 'inventoryPurchase'} /></PagePane>}
         {shouldMount('inventorySummaryLibrary') && <PagePane page="inventorySummaryLibrary" activeTab={activeTab}><DimensionLibrary token={token} reloadDemands={reloadDemands} reloadDemandData={false} setMessage={setMessage} title="底表文件" slots={INVENTORY_SUMMARY_LIBRARY_SLOTS} gridColumns={4} /></PagePane>}
-        {shouldMount('inventoryManualLibrary') && <PagePane page="inventoryManualLibrary" activeTab={activeTab}><DimensionLibrary token={token} reloadDemands={reloadDemands} reloadDemandData={false} setMessage={setMessage} title="手工表库" slots={INVENTORY_MANUAL_LIBRARY_SLOTS} gridColumns={4} /></PagePane>}
         {shouldMount('dimensionLibrary') && <PagePane page="dimensionLibrary" activeTab={activeTab}><DimensionLibrary token={token} reloadDemands={reloadDemands} setMessage={setMessage} gridColumns={3} highlightSlotId={highlightSlotId} /></PagePane>}
         <PersistentHorizontalScrollbar activeTab={activeTab} />
       </section>

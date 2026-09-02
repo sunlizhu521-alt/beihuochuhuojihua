@@ -145,6 +145,7 @@ const DIMENSION_SLOTS = {
   inventorySummaryFile18: '备用',
   inventorySummaryFile19: '备用',
   inventorySummaryFile20: '备用',
+  inventorySummaryFile21: '备用',
   firstMileData1: '张婷婷头程数据',
   firstMileData2: '扈翠芸头程数据',
   firstMileData3: '魏静头程数据',

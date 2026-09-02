@@ -2,7 +2,7 @@ import xlsx from 'xlsx';
 
 const INVENTORY_SLOT_IDS = new Set([
   ...Array.from({ length: 14 }, (_, index) => `inventorySummaryFile${index + 1}`),
-  ...Array.from({ length: 4 }, (_, index) => `inventorySummaryFile${index + 17}`)
+  ...Array.from({ length: 5 }, (_, index) => `inventorySummaryFile${index + 17}`)
 ]);
 const UNIQUE_SHEET_SLOT_IDS = new Set([
   'inventorySummaryFile1',
