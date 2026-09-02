@@ -5,6 +5,7 @@ import { writeStyledExcelFile } from '../shared/excel-export.js';
 import { normalizeProgressDateValue } from '../shared/progress-date.js';
 import { getLoadingProgress, installGlobalFetchProgress, subscribeLoadingProgress } from './loading-progress.js';
 import { groupOperationBoardRowsByMaterial } from './operation-board-grouping.js';
+import { installStaticPreviewApi } from './static-preview-api.js';
 
 const InventoryCalculationGuide = React.lazy(() => import('./InventoryCalculationGuide.jsx'));
 const InventoryRiskPage = React.lazy(() => import('./InventoryRiskPage.jsx'));
@@ -12,6 +13,7 @@ const SupplyPlanBoard = React.lazy(() => import('./SupplyPlanBoard.jsx'));
 const BeiHuoGongJuPage = React.lazy(() => import('./BeiHuoGongJuPage.jsx'));
 const FullInventorySummaryPage = React.lazy(() => import('./FullInventorySummaryPage.jsx'));
 
+installStaticPreviewApi();
 installGlobalFetchProgress();
 
 const API = import.meta.env.DEV ? 'http://localhost:4003' : '';

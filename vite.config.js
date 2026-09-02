@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
-  base: '/gendanjindu/',
+  base: '/beihuochuhuojihua/',
   build: {
     target: 'es2020',
     minify: 'terser',
