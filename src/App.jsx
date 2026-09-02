@@ -27,7 +27,6 @@ const PAGE_ORDER = [
   'beiHuoReviewLibrary',
   'inventoryPurchase',
   'fullInventorySummary',
-  'fullInventoryLibrary',
   'inventorySummaryLibrary',
   'dimensionLibrary'
 ];
@@ -39,14 +38,13 @@ const PAGE_LABELS = {
   beiHuoReviewLibrary: '备货文件导入',
   inventoryPurchase: '采购未交付',
   fullInventorySummary: '全量库存汇总',
-  fullInventoryLibrary: '全量库存底表',
   inventorySummaryLibrary: '底表文件',
   dimensionLibrary: '维度表库'
 };
 
 const NAV_GROUPS = [
   { title: '备货计划', pages: ['supplyPlanBoard', 'inventoryRisk', 'beiHuoGongJu', 'beiHuoReviewLibrary', 'inventoryPurchase'] },
-  { title: '全量库存', pages: ['fullInventorySummary', 'fullInventoryLibrary'] },
+  { title: '全量库存', pages: ['fullInventorySummary'] },
   { title: '库存数据', pages: ['inventorySummaryLibrary'] },
   { title: '维护数据', pages: ['dimensionLibrary'] }
 ];
@@ -269,11 +267,6 @@ const BEI_HUO_REVIEW_LIBRARY_SLOTS = [
   { id: 'beiHuoReviewFile2', title: '备用', fields: [] },
   { id: 'beiHuoReviewFile3', title: '备用', fields: [] },
   { id: 'beiHuoReviewFile4', title: '备用', fields: [] }
-];
-
-const FULL_INVENTORY_LIBRARY_SLOTS = [
-  { id: 'fullInventoryFile1', title: '全量库存底表', fields: [], fullInventory: true },
-  { id: 'fullInventoryFile2', title: '订单履约表', fields: [], fullInventory: true }
 ];
 
 function normalize(value) {
@@ -9165,7 +9158,6 @@ function App() {
         {shouldMount('beiHuoGongJu') && <PagePane page="beiHuoGongJu" activeTab={activeTab}><React.Suspense fallback={<div className="loading-fallback">加载中...</div>}><BeiHuoGongJuPage token={token} active={activeTab === 'beiHuoGongJu'} /></React.Suspense></PagePane>}
         {shouldMount('beiHuoReviewLibrary') && <PagePane page="beiHuoReviewLibrary" activeTab={activeTab}><DimensionLibrary token={token} reloadDemands={reloadDemands} reloadDemandData={false} setMessage={setMessage} title="备货文件导入" slots={BEI_HUO_REVIEW_LIBRARY_SLOTS} gridColumns={4} /></PagePane>}
         {shouldMount('fullInventorySummary') && <PagePane page="fullInventorySummary" activeTab={activeTab}><React.Suspense fallback={<div className="loading-fallback">加载中...</div>}><FullInventorySummaryPage token={token} active={activeTab === 'fullInventorySummary'} /></React.Suspense></PagePane>}
-        {shouldMount('fullInventoryLibrary') && <PagePane page="fullInventoryLibrary" activeTab={activeTab}><DimensionLibrary token={token} reloadDemands={reloadDemands} reloadDemandData={false} setMessage={setMessage} title="全量库存底表" slots={FULL_INVENTORY_LIBRARY_SLOTS} gridColumns={1} /></PagePane>}
         {shouldMount('supplyPlanBoard') && <PagePane page="supplyPlanBoard" activeTab={activeTab}><React.Suspense fallback={<div className="loading-fallback">加载中...</div>}><SupplyPlanBoard token={token} active={activeTab === 'supplyPlanBoard'} /></React.Suspense></PagePane>}
         {shouldMount('inventoryPurchase') && <PagePane page="inventoryPurchase" activeTab={activeTab}><InventoryPurchaseFilePage token={token} active={activeTab === 'inventoryPurchase'} /></PagePane>}
         {shouldMount('inventorySummaryLibrary') && <PagePane page="inventorySummaryLibrary" activeTab={activeTab}><DimensionLibrary token={token} reloadDemands={reloadDemands} reloadDemandData={false} setMessage={setMessage} title="底表文件" slots={INVENTORY_SUMMARY_LIBRARY_SLOTS} gridColumns={4} /></PagePane>}
