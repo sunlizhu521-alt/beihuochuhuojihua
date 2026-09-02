@@ -9,7 +9,6 @@ import { groupOperationBoardRowsByMaterial } from './operation-board-grouping.js
 const InventoryCalculationGuide = React.lazy(() => import('./InventoryCalculationGuide.jsx'));
 const InventoryRiskPage = React.lazy(() => import('./InventoryRiskPage.jsx'));
 const SupplyPlanBoard = React.lazy(() => import('./SupplyPlanBoard.jsx'));
-const ProductArchivePage = React.lazy(() => import('./ProductArchivePage.jsx'));
 const BeiHuoGongJuPage = React.lazy(() => import('./BeiHuoGongJuPage.jsx'));
 const FullInventorySummaryPage = React.lazy(() => import('./FullInventorySummaryPage.jsx'));
 
@@ -20,80 +19,38 @@ const TOKEN_KEY = 'gendanjinduToken';
 const ACTIVE_PAGE_KEY = 'gendanjinduActivePage';
 
 const PAGE_ORDER = [
-  'domesticBoard',
-  'wangdianData',
-  'crossBorderInventory',
-  'lingxingInventory',
   'inventorySummary',
   'inventoryRisk',
   'supplyPlanBoard',
-  'productArchive',
-  'businessUnitFeedback',
-  'inventoryPurchase',
-  'inventorySummaryLibrary',
-  'inventoryManualLibrary',
   'beiHuoGongJu',
   'beiHuoReviewLibrary',
+  'inventoryPurchase',
   'fullInventorySummary',
   'fullInventoryLibrary',
-  'operationBoard',
-  'progressRefresh',
-  'differenceAllocation',
-  'trace',
-  'purchaseBoard',
-  'firstMileBoard',
-  'firstMileDatabase',
-  'dimensionMissing',
-  'dimensionLibrary',
-  'kingdeeImport',
-  'permissions',
-  'operationLogs',
-  'tableRelationships'
+  'inventorySummaryLibrary',
+  'inventoryManualLibrary',
+  'dimensionLibrary'
 ];
 
 const PAGE_LABELS = {
-  domesticBoard: '国内事业部看板',
   inventorySummary: '库存汇总',
   inventoryRisk: '供应计划分析',
   supplyPlanBoard: '供应计划工具',
-  productArchive: '产品档案',
-  businessUnitFeedback: '产品数据',
-  inventoryPurchase: '采购未交付',
-  inventorySummaryLibrary: '底表文件',
-  inventoryManualLibrary: '手工表库',
   beiHuoGongJu: '备货工具',
   beiHuoReviewLibrary: '备货文件导入',
+  inventoryPurchase: '采购未交付',
   fullInventorySummary: '全量库存汇总',
   fullInventoryLibrary: '全量库存底表',
-  operationBoard: '运营看板-未交付',
-  purchaseBoard: '采购看板',
-  kingdeeImport: '采购订单',
-  progressRefresh: '生产跟进',
-  wangdianData: '国内数据',
-  lingxingInventory: '领星库存',
-  firstMileDatabase: '头程数据库',
-  firstMileBoard: '头程数据看板',
-  crossBorderInventory: '跨境库存看板',
-  dimensionMissing: '维度表缺失',
-  dimensionLibrary: '维度表库',
-  trace: '变更追溯',
-  differenceAllocation: '差异分配',
-  operationLogs: '操作记录',
-  permissions: '权限管理',
-  tableRelationships: '数据关系图'
+  inventorySummaryLibrary: '底表文件',
+  inventoryManualLibrary: '手工表库',
+  dimensionLibrary: '维度表库'
 };
 
 const NAV_GROUPS = [
+  { title: '备货计划', pages: ['supplyPlanBoard', 'inventoryRisk', 'beiHuoGongJu', 'beiHuoReviewLibrary', 'inventoryPurchase'] },
   { title: '全量库存', pages: ['fullInventorySummary', 'fullInventoryLibrary'] },
-  { title: '国内数据', pages: ['domesticBoard', 'wangdianData'] },
-  { title: '跨境数据', pages: ['crossBorderInventory', 'lingxingInventory'] },
-  { title: '库存数据', pages: ['inventorySummary', 'inventoryRisk', 'supplyPlanBoard', 'inventoryPurchase', 'inventorySummaryLibrary', 'inventoryManualLibrary'] },
-  { title: '备货复核', pages: ['beiHuoGongJu', 'beiHuoReviewLibrary'] },
-  { title: '产品数据', pages: ['productArchive', 'businessUnitFeedback'] },
-  { title: '采购跟单', pages: ['operationBoard', 'progressRefresh', 'differenceAllocation', 'operationLogs', 'trace', 'purchaseBoard'] },
-  { title: '头程数据', pages: ['firstMileBoard', 'firstMileDatabase'] },
-  { title: '维护数据', pages: ['dimensionMissing', 'dimensionLibrary', 'kingdeeImport'] },
-  { title: '系统操作', pages: ['permissions', 'tableRelationships'] }
+  { title: '库存数据', pages: ['inventorySummary', 'inventorySummaryLibrary', 'inventoryManualLibrary'] },
+  { title: '维护数据', pages: ['dimensionLibrary'] }
 ];
 
 const DEMAND_DATA_PAGES = new Set(['inventoryPurchase', 'purchaseBoard', 'progressRefresh']);
@@ -9177,33 +9134,12 @@ function App() {
   const [demandsScope, setDemandsScope] = useState('');
   const demandRequestSequence = useRef(0);
   const [message, setMessage] = useState('');
-  const [crossBorderVersion, setCrossBorderVersion] = useState(0);
-  const [firstMileVersion, setFirstMileVersion] = useState(0);
   const [highlightSlotId, setHighlightSlotId] = useState('');
 
   useEffect(() => subscribeLoadingProgress(setGlobalLoading), []);
 
-  async function reloadDemands(currentToken = token, requestedScope = '') {
-    const scope = requestedScope || demandDataScopeForPage(activeTab) || 'full';
-    const endpoint = scope === 'progress' ? '/api/progress/demands' : '/api/demands';
-    const requestSequence = demandRequestSequence.current + 1;
-    demandRequestSequence.current = requestSequence;
-    setDemandsLoading(true);
-    try {
-      const payload = await request(endpoint, { token: currentToken });
-      if (requestSequence !== demandRequestSequence.current) return payload;
-      setDemands(payload.rows || []);
-      setDemandMeta({
-        currentAppliedAt: payload.currentAppliedAt || '',
-        dataScope: payload.dataScope || scope,
-        durationMs: numberValue(payload.durationMs)
-      });
-      setDemandsScope(payload.dataScope || scope);
-      setDemandsLoaded(true);
-      return payload;
-    } finally {
-      if (requestSequence === demandRequestSequence.current) setDemandsLoading(false);
-    }
+  async function reloadDemands() {
+    return;
   }
 
   async function bootstrap(currentToken = token) {
@@ -9271,8 +9207,6 @@ function App() {
   const progressReturnPage = visiblePages.find((page) => page !== 'progressRefresh') || '';
   const canView = (page) => visiblePages.includes(page);
   const shouldMount = (page) => canView(page) && visitedPages.has(page);
-  const refreshCrossBorderData = () => setCrossBorderVersion((version) => version + 1);
-  const refreshFirstMileData = () => setFirstMileVersion((version) => version + 1);
   const maintainDimensionSlot = (page, slotId) => {
     if (!canView(page)) {
       setMessage('当前账号没有对应文件库权限，请联系管理员授权。');
@@ -9288,7 +9222,7 @@ function App() {
       <SecurityWatermark userName={user.name} />
       {!progressStandalone && (
         <aside className="sidebar" onClick={(event) => event.stopPropagation()}>
-          <h1>采购跟单&头程数据</h1>
+          <h1>备货出货计划</h1>
           <span className="app-version-time">服务器共享数据</span>
           <nav className="sidebar-nav">
             {NAV_GROUPS.map((group) => {
@@ -9313,14 +9247,12 @@ function App() {
           <div className="user-box">
             <strong>{user.name}</strong>
             <span>{user.role}</span>
-            <button type="button" className="ghost" onClick={logout}>退出登录</button>
           </div>
         </aside>
       )}
       <section className={progressStandalone ? 'progress-standalone-content' : 'content'} onClick={(event) => event.stopPropagation()}>
         {message && <p className="message">{message}</p>}
         {demandsLoading && DEMAND_DATA_PAGES.has(activeTab) && <p className="section-count">正在加载采购订单数据...</p>}
-        {shouldMount('domesticBoard') && <PagePane page="domesticBoard" activeTab={activeTab}><DomesticBoard token={token} setMessage={setMessage} /></PagePane>}
         {shouldMount('inventorySummary') && <PagePane page="inventorySummary" activeTab={activeTab}><InventorySummary token={token} active={activeTab === 'inventorySummary'} /></PagePane>}
         {shouldMount('inventoryRisk') && <PagePane page="inventoryRisk" activeTab={activeTab}><React.Suspense fallback={<div className="loading-fallback">加载中...</div>}><InventoryRiskPage token={token} active={activeTab === 'inventoryRisk'} /></React.Suspense></PagePane>}
         {shouldMount('beiHuoGongJu') && <PagePane page="beiHuoGongJu" activeTab={activeTab}><React.Suspense fallback={<div className="loading-fallback">加载中...</div>}><BeiHuoGongJuPage token={token} active={activeTab === 'beiHuoGongJu'} /></React.Suspense></PagePane>}
@@ -9328,27 +9260,10 @@ function App() {
         {shouldMount('fullInventorySummary') && <PagePane page="fullInventorySummary" activeTab={activeTab}><React.Suspense fallback={<div className="loading-fallback">加载中...</div>}><FullInventorySummaryPage token={token} active={activeTab === 'fullInventorySummary'} /></React.Suspense></PagePane>}
         {shouldMount('fullInventoryLibrary') && <PagePane page="fullInventoryLibrary" activeTab={activeTab}><DimensionLibrary token={token} reloadDemands={reloadDemands} reloadDemandData={false} setMessage={setMessage} title="全量库存底表" slots={FULL_INVENTORY_LIBRARY_SLOTS} gridColumns={1} /></PagePane>}
         {shouldMount('supplyPlanBoard') && <PagePane page="supplyPlanBoard" activeTab={activeTab}><React.Suspense fallback={<div className="loading-fallback">加载中...</div>}><SupplyPlanBoard token={token} active={activeTab === 'supplyPlanBoard'} /></React.Suspense></PagePane>}
-        {shouldMount('productArchive') && <PagePane page="productArchive" activeTab={activeTab}><React.Suspense fallback={<div className="loading-fallback">加载中...</div>}><ProductArchivePage token={token} active={activeTab === 'productArchive'} user={user} /></React.Suspense></PagePane>}
-        {shouldMount('businessUnitFeedback') && <PagePane page="businessUnitFeedback" activeTab={activeTab}><DimensionLibrary token={token} reloadDemands={reloadDemands} reloadDemandData={false} setMessage={setMessage} title="产品数据" slots={BUSINESS_UNIT_FEEDBACK_SLOTS} gridColumns={4} /></PagePane>}
         {shouldMount('inventoryPurchase') && <PagePane page="inventoryPurchase" activeTab={activeTab}><InventoryPurchaseFilePage token={token} active={activeTab === 'inventoryPurchase'} /></PagePane>}
-        {shouldMount('inventorySummaryLibrary') && <PagePane page="inventorySummaryLibrary" activeTab={activeTab}><DimensionLibrary token={token} reloadDemands={reloadDemands} reloadDemandData={false} setMessage={setMessage} title="底表文件" slots={INVENTORY_SUMMARY_LIBRARY_SLOTS} gridColumns={4} onDataApplied={refreshCrossBorderData} /></PagePane>}
+        {shouldMount('inventorySummaryLibrary') && <PagePane page="inventorySummaryLibrary" activeTab={activeTab}><DimensionLibrary token={token} reloadDemands={reloadDemands} reloadDemandData={false} setMessage={setMessage} title="底表文件" slots={INVENTORY_SUMMARY_LIBRARY_SLOTS} gridColumns={4} /></PagePane>}
         {shouldMount('inventoryManualLibrary') && <PagePane page="inventoryManualLibrary" activeTab={activeTab}><DimensionLibrary token={token} reloadDemands={reloadDemands} reloadDemandData={false} setMessage={setMessage} title="手工表库" slots={INVENTORY_MANUAL_LIBRARY_SLOTS} gridColumns={4} /></PagePane>}
-        {shouldMount('operationBoard') && <PagePane page="operationBoard" activeTab={activeTab}><OperationBoardPage token={token} active={activeTab === 'operationBoard'} /></PagePane>}
-        {shouldMount('purchaseBoard') && <PagePane page="purchaseBoard" activeTab={activeTab}><PurchaseBoard rows={demands} /></PagePane>}
-        {shouldMount('kingdeeImport') && <PagePane page="kingdeeImport" activeTab={activeTab}><KingdeeImport token={token} user={user} reloadDemands={reloadDemands} setMessage={setMessage} /></PagePane>}
-        {shouldMount('progressRefresh') && <PagePane page="progressRefresh" activeTab={activeTab}><ProgressPage rows={demands} token={token} user={user} reloadDemands={reloadDemands} setMessage={setMessage} onExit={progressReturnPage ? () => setActiveTab(progressReturnPage) : null} onLogout={logout} currentAppliedAt={demandMeta.currentAppliedAt} /></PagePane>}
-        {shouldMount('differenceAllocation') && <PagePane page="differenceAllocation" activeTab={activeTab}><DifferenceAllocationPage token={token} user={user} setMessage={setMessage} currentAppliedAt={demandMeta.currentAppliedAt} /></PagePane>}
-        {shouldMount('wangdianData') && <PagePane page="wangdianData" activeTab={activeTab}><DimensionLibrary token={token} reloadDemands={reloadDemands} setMessage={setMessage} title="国内数据" slots={WANGDIAN_SLOTS} gridColumns={3} /></PagePane>}
-        {shouldMount('lingxingInventory') && <PagePane page="lingxingInventory" activeTab={activeTab}><DimensionLibrary token={token} reloadDemands={reloadDemands} setMessage={setMessage} title="领星库存" slots={LINGXING_INVENTORY_SLOTS} onDataApplied={refreshCrossBorderData} highlightSlotId={highlightSlotId} /></PagePane>}
-        {shouldMount('firstMileDatabase') && <PagePane page="firstMileDatabase" activeTab={activeTab}><DimensionLibrary token={token} reloadDemands={reloadDemands} setMessage={setMessage} title="头程数据库" slots={FIRST_MILE_DATABASE_SLOTS} gridColumns={3} onDataApplied={refreshFirstMileData} /></PagePane>}
-        {shouldMount('firstMileBoard') && <PagePane page="firstMileBoard" activeTab={activeTab}><FirstMileBoard token={token} setMessage={setMessage} refreshVersion={firstMileVersion} /></PagePane>}
-        {shouldMount('crossBorderInventory') && <PagePane page="crossBorderInventory" activeTab={activeTab}><CrossBorderInventoryBoard token={token} setMessage={setMessage} refreshVersion={crossBorderVersion} onOpenMissing={() => canView('dimensionMissing') ? setActiveTab('dimensionMissing') : setMessage('当前账号没有维度表缺失页面权限。')} /></PagePane>}
-        {shouldMount('dimensionMissing') && <PagePane page="dimensionMissing" activeTab={activeTab}><DimensionMissingPage token={token} user={user} setMessage={setMessage} refreshVersion={crossBorderVersion} active={activeTab === 'dimensionMissing'} onMaintain={maintainDimensionSlot} /></PagePane>}
-        {shouldMount('dimensionLibrary') && <PagePane page="dimensionLibrary" activeTab={activeTab}><DimensionLibrary token={token} reloadDemands={reloadDemands} setMessage={setMessage} gridColumns={3} onDataApplied={refreshCrossBorderData} highlightSlotId={highlightSlotId} /></PagePane>}
-        {shouldMount('trace') && <PagePane page="trace" activeTab={activeTab}><TracePage token={token} setMessage={setMessage} /></PagePane>}
-        {shouldMount('operationLogs') && <PagePane page="operationLogs" activeTab={activeTab}><OperationLogsPage token={token} user={user} setMessage={setMessage} title="生产跟进 / 操作记录" fixedPageKey="progressRefresh" /></PagePane>}
-        {shouldMount('permissions') && <PagePane page="permissions" activeTab={activeTab}><PermissionsPage token={token} currentUser={user} pages={pages} setMessage={setMessage} /></PagePane>}
-        {shouldMount('tableRelationships') && <PagePane page="tableRelationships" activeTab={activeTab}><DataRelationshipsPage token={token} /></PagePane>}
+        {shouldMount('dimensionLibrary') && <PagePane page="dimensionLibrary" activeTab={activeTab}><DimensionLibrary token={token} reloadDemands={reloadDemands} setMessage={setMessage} gridColumns={3} highlightSlotId={highlightSlotId} /></PagePane>}
         <PersistentHorizontalScrollbar activeTab={activeTab} />
       </section>
     </main>
