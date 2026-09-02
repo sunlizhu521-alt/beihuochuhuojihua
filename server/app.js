@@ -1437,17 +1437,12 @@ function fullInventorySummaryData() {
      FROM dimension_files
      WHERE slot_id = 'fullInventoryFile2' AND applied = 1`
   );
-  const undeliveredRows = all(
-    `SELECT d.business_unit AS business_unit,
-            k.material_code AS material_code,
-            SUM(COALESCE(k.remaining_inbound_qty, 0)) AS undelivered_qty
-     FROM order_demands d
-     JOIN kingdee_orders k
-       ON k.demand_key = d.demand_key
-      AND k.batch_id = d.source_batch_id
-     WHERE d.active = 1
-     GROUP BY d.business_unit, k.material_code`
-  );
+  const fulfillmentRows = parseJson(fulfillmentRecord?.rows_json, []);
+  const undeliveredRows = fulfillmentRows.map((row) => ({
+    business_unit: row.businessUnit,
+    material_code: row.materialCode,
+    undelivered_qty: row.manualRemainingQty
+  }));
   const summary = buildFullInventorySummary({
     inventoryRows: parseJson(inventoryRecord?.rows_json, []),
     productRows: getDimensionRows('productCategory'),
@@ -1455,7 +1450,6 @@ function fullInventorySummaryData() {
     undeliveredRows,
     updatedAt: inventoryRecord?.updated_at || ''
   });
-  const fulfillmentRows = parseJson(fulfillmentRecord?.rows_json, []);
   const undeliveredGroup = summary.groups.find((group) => group.key === 'undelivered');
   if (undeliveredGroup) undeliveredGroup.rows = fulfillmentRows;
   return summary;
