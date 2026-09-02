@@ -247,8 +247,8 @@ const LINGXING_INVENTORY_SLOTS = [
 ];
 
 const INVENTORY_SUMMARY_LIBRARY_SLOTS = [
-  { id: 'inventorySummaryFile18', title: '备用', fields: [] },
-  { id: 'inventorySummaryFile19', title: '备用', fields: [] },
+  { id: 'inventorySummaryFile18', title: '库存数据', fields: [] },
+  { id: 'inventorySummaryFile19', title: '未交付数据', fields: [] },
   { id: 'inventorySummaryFile20', title: '备用', fields: [] },
   { id: 'inventorySummaryFile21', title: '备用', fields: [] }
 ];
