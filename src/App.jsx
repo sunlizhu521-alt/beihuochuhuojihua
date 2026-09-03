@@ -90,7 +90,7 @@ const DIMENSION_SLOTS = [
     ['level1WarehouseCategory', '一级仓库分类'],
     ['level2WarehouseCategory', '二级仓库分类']
   ] },
-  { id: 'warehouseMaterialMap', title: '仓库与物料对照表', fields: [
+  { id: 'warehouseMaterialMap', title: '产品迭代关系', fields: [
     ['subject', '主体/使用组织/库存组织'],
     ['warehouseCode', '仓库编码'],
     ['warehouseName', '仓库名称'],
@@ -99,19 +99,19 @@ const DIMENSION_SLOTS = [
     ['businessUnit', '事业部'],
     ['remark', '备注']
   ] },
-  { id: 'dimensionSpare', title: '领星SKU和物料编码对照', fields: [
+  { id: 'dimensionSpare', title: '产品定位', fields: [
     ['lingxingSku', '领星SKU'],
     ['materialCode', '物料编码'],
     ['remark', '备注']
   ] },
-  { id: 'lingxingWarehouseMap', title: '领星&金蝶仓库对照', fields: [
+  { id: 'lingxingWarehouseMap', title: '安全库存', fields: [
     ['lingxingWarehouseName', '领星仓库名称'],
     ['kingdeeWarehouseCode', '金蝶仓库编码'],
     ['kingdeeWarehouseName', '金蝶仓库名称'],
     ['remark', '备注']
   ] },
   { id: 'dimensionSpare2', title: '备用', fields: [] },
-  { id: 'spare2', title: '国内商品资料', fields: [
+  { id: 'spare2', title: '备用2', fields: [
     ['stockupStatus', '是否正常备货'],
     ['brand', '品牌'],
     ['productType', '产品类型'],
@@ -151,8 +151,8 @@ const PRODUCT_PROJECT_FIELDS = [
 const INVENTORY_SUMMARY_LIBRARY_SLOTS = [
   { id: 'inventorySummaryFile18', title: '库存数据', fields: [] },
   { id: 'inventorySummaryFile19', title: '未交付数据', fields: [] },
-  { id: 'inventorySummaryFile20', title: '备用', fields: [] },
-  { id: 'inventorySummaryFile21', title: '备用', fields: [] }
+  { id: 'inventorySummaryFile20', title: '销售数据', fields: [] },
+  { id: 'inventorySummaryFile21', title: 'M+6 预测', fields: [] }
 ];
 
 
