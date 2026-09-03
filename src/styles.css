@@ -8366,6 +8366,10 @@ th {
   text-align: center;
 }
 
+.supply-plan-table .supply-plan-action-rowspan {
+  vertical-align: middle;
+}
+
 .supply-plan-action-badge {
   display: inline-flex;
   min-width: 66px;

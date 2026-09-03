@@ -6,13 +6,17 @@ export const SUPPLY_PLAN_EXPORT_METRICS = [
   '未交付',
   '在途',
   '在库',
-  '库存剩余数量',
+  '预测剩余库存',
   '建议采购'
 ];
 
 const DETAIL_COLUMNS = [
   '产品线', '系列', '型号', '事业部', '物料编码', 'SKU', '名称', '产品阶段', '产品定位',
-  '仓库', '渠道', '安全库存天数', '全链路天数', '在库量', '在途量', '在制量', '库存剩余', '供应计划指标'
+  '仓库', '渠道', '安全库存天数', '全链路天数', '在库量', '在途量', '在制量', '预测剩余库存', '供应计划指标'
+];
+export const SUPPLY_PLAN_PURCHASE_COLUMNS = [
+  '产品线', '系列', '型号', '物料编码', 'SKU', '名称', '事业部', '在库量', '在途量', '未交付量',
+  '预测日均', '库存可销天数', '距缺货天数', '安全库存数量', '建议采购数量', '动作结论'
 ];
 const PURCHASE_COLUMNS = [
   '产品线', '系列', '型号', '事业部', '物料编码', 'SKU', '渠道',
@@ -23,7 +27,7 @@ const METRIC_FILLS = {
   未交付: 'FFFFF3CD',
   在途: 'FFE2F0D9',
   在库: 'FFDDEBF7',
-  库存剩余数量: 'FFE4DFEC',
+  预测剩余库存: 'FFE4DFEC',
   建议采购: 'FFFCE4D6'
 };
 const HEADER_FILL = 'FFD9EAF7';
@@ -114,7 +118,7 @@ function metricWeekValue(row, metric, weekIndex) {
   if (metric === '未交付') return numberValue(row.undeliveredQty);
   if (metric === '在途') return numberValue(row.inTransitQty);
   if (metric === '在库') return numberValue(row.onHandQty);
-  if (metric === '库存剩余数量') return numberValue(row.inventoryRemainingQty);
+  if (metric === '预测剩余库存') return numberValue(row.inventoryRemainingQty);
   return metric === '建议采购' ? numberValue(row.purchaseGap) : '';
 }
 
@@ -122,6 +126,10 @@ export function formatSupplyPlanExportDate(value = new Date()) {
   const date = new Date(value);
   const part = (number) => String(number).padStart(2, '0');
   return `${date.getFullYear()}-${part(date.getMonth() + 1)}-${part(date.getDate())}`;
+}
+
+export function formatSupplyPlanCompactDate(value = new Date()) {
+  return formatSupplyPlanExportDate(value).replaceAll('-', '');
 }
 
 export function buildSupplyPlanExportData({
@@ -175,6 +183,30 @@ export function buildSupplyPlanExportData({
     horizonMonths: supplyPlanData.horizonMonths,
     generatedAt: new Date(now).toISOString()
   };
+}
+
+export function buildSupplyPlanPurchaseExportData({ supplyPlanData = {}, filters = {} } = {}) {
+  const rows = (Array.isArray(supplyPlanData.rows) ? supplyPlanData.rows : [])
+    .filter((row) => matchesFilters(row, filters) && numberValue(row.purchaseGap) > 0)
+    .map((row) => [
+      row.productLine,
+      row.productSeries,
+      row.model,
+      materialCode(row.materialCode),
+      row.sku,
+      row.skuName || row.materialName,
+      row.businessUnit,
+      numberValue(row.onHandQty),
+      numberValue(row.inTransitQty),
+      numberValue(row.undeliveredQty),
+      numberValue(row.forecastDaily),
+      numberValue(row.stockCoverDays),
+      numberValue(row.daysUntilShortage),
+      numberValue(row.safetyStockQty),
+      numberValue(row.purchaseGap),
+      row.actionConclusion
+    ]);
+  return { columns: SUPPLY_PLAN_PURCHASE_COLUMNS, rows };
 }
 
 export function buildSupplyPlanExportWorkbook(data = {}) {
@@ -289,4 +321,46 @@ export async function generateSupplyPlanExcel(data = {}) {
   await workbook.commit();
   await outputComplete;
   return Buffer.concat(chunks);
+}
+
+export async function generateSupplyPlanPurchaseExcel(data = {}) {
+  const excelModule = await import('exceljs');
+  const ExcelJS = excelModule.default || excelModule;
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = '备货出货计划';
+  workbook.created = new Date();
+  const worksheet = workbook.addWorksheet('备货计划', {
+    views: [{ state: 'frozen', ySplit: 1, topLeftCell: 'A2', activeCell: 'A2' }]
+  });
+  const columns = data.columns || SUPPLY_PLAN_PURCHASE_COLUMNS;
+  const rows = data.rows || [];
+  const widths = [12, 12, 16, 16, 16, 24, 14, 12, 12, 12, 13, 16, 14, 16, 16, 14];
+  worksheet.columns = columns.map((header, index) => ({
+    header,
+    key: `column${index + 1}`,
+    width: widths[index] || 12
+  }));
+  const header = worksheet.getRow(1);
+  header.height = 24;
+  header.eachCell((cell) => {
+    cell.font = { name: '宋体', size: 11, bold: true, color: { argb: 'FF000000' } };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDDEBF7' } };
+    cell.border = thinBorder();
+    cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+  });
+  rows.forEach((values) => {
+    const row = worksheet.addRow(values);
+    row.height = 22;
+    row.eachCell({ includeEmpty: true }, (cell) => {
+      cell.font = { name: '宋体', size: 11, color: { argb: 'FF000000' } };
+      cell.border = thinBorder();
+      cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+      if (typeof cell.value === 'number') cell.numFmt = '#,##0.##';
+    });
+  });
+  worksheet.autoFilter = {
+    from: 'A1',
+    to: `${xlsx.utils.encode_col(Math.max(0, columns.length - 1))}${Math.max(1, rows.length + 1)}`
+  };
+  return workbook.xlsx.writeBuffer();
 }

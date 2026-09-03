@@ -4,7 +4,7 @@ export const SUPPLY_PLAN_ROW_TYPES = Object.freeze([
   '未交付',
   '在途',
   '在库',
-  '库存剩余数量',
+  '预测剩余库存',
   '建议采购'
 ]);
 

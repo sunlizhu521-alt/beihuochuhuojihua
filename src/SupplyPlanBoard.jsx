@@ -118,7 +118,7 @@ function stickyStyle(columns, index) {
 
 function metricWeekValue(row, metric, weekIndex) {
   if (metric === '销售预测') return row.weeklyForecast?.[weekIndex] || 0;
-  if (metric === '库存剩余数量') return weekIndex === 0 ? row.inventoryRemainingQty : null;
+  if (metric === '预测剩余库存') return weekIndex === 0 ? row.inventoryRemainingQty : null;
   if (weekIndex > 0) return 0;
   if (metric === '未交付') return row.undeliveredQty;
   if (metric === '在途') return row.inTransitQty;
@@ -131,7 +131,7 @@ function metricDataValue(row, metric) {
   if (metric === '未交付') return row.undeliveredQty;
   if (metric === '在途') return row.inTransitQty;
   if (metric === '在库') return row.onHandQty;
-  if (metric === '库存剩余数量') return row.inventoryRemainingQty;
+  if (metric === '预测剩余库存') return row.inventoryRemainingQty;
   return metric === '建议采购' ? row.purchaseGap : 0;
 }
 
@@ -195,17 +195,23 @@ const SupplyPlanMetricRows = memo(function SupplyPlanMetricRows({
         );
       }) : null}
       <td className="supply-plan-sticky metric-name" style={stickyStyle(fixedColumns, fixedColumns.length - 2)}>{metric}</td>
-      <td className="supply-plan-sticky supply-plan-action-column" style={stickyStyle(fixedColumns, fixedColumns.length - 1)}>
-        {metric === '建议采购' ? <SupplyPlanActionBadge row={row} /> : null}
-      </td>
-      <td className={`numeric-cell supply-plan-data-column${metric === '库存剩余数量' && metricDataValue(row, metric) < 0 ? ' inventory-negative' : ''}`}>
+      {metricIndex === 0 ? (
+        <td
+          rowSpan={SUPPLY_PLAN_ROW_TYPES.length}
+          className="supply-plan-sticky supply-plan-action-column supply-plan-action-rowspan"
+          style={stickyStyle(fixedColumns, fixedColumns.length - 1)}
+        >
+          <SupplyPlanActionBadge row={row} />
+        </td>
+      ) : null}
+      <td className={`numeric-cell supply-plan-data-column${metric === '预测剩余库存' && metricDataValue(row, metric) < 0 ? ' inventory-negative' : ''}`}>
         {numberText(metricDataValue(row, metric))}
       </td>
       {beforeWidth ? <td aria-hidden="true" className="supply-plan-week-spacer" style={{ width: beforeWidth, minWidth: beforeWidth }} /> : null}
       {visibleWeeks.map((week, visibleIndex) => {
         const weekIndex = weekStart + visibleIndex;
         const value = metricWeekValue(row, metric, weekIndex);
-        const negativeRemaining = metric === '库存剩余数量' && value !== null && value < 0;
+        const negativeRemaining = metric === '预测剩余库存' && value !== null && value < 0;
         return (
           <td key={week.key} className={`numeric-cell${metric === '建议采购' && value > 0 ? ' gap-positive' : ''}${negativeRemaining ? ' inventory-negative' : ''}`}>
             {value === null ? '' : numberText(value)}
@@ -385,28 +391,27 @@ export default function SupplyPlanBoard({ token, active }) {
   }
 
   async function exportExcel() {
-    if (exporting || loading || !pagination.totalChildItems) return;
-    const estimatedRows = pagination.totalChildItems * SUPPLY_PLAN_ROW_TYPES.length;
-    const confirmed = window.confirm(`当前视野 ${horizonMonths} 个月，共 ${pagination.totalItems} 个型号，预计生成 ${estimatedRows} 行。\n\n确认导出 Excel？`);
-    if (!confirmed) return;
+    if (exporting || loading) return;
     setExporting(true);
     setError('');
     setMessage('');
     try {
-      const response = await fetch(`${API}/api/supply-plan/export`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ horizonMonths, filters: filterQuery })
+      const query = new URLSearchParams({ horizonMonths: String(horizonMonths), ...filterQuery });
+      const response = await fetch(`${API}/api/supply-plan/export?${query}`, {
+        headers: { Authorization: `Bearer ${token}` }
       });
+      const contentType = response.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload?.error || `导出失败（${response.status}）`);
+        setMessage(payload?.message || '当前无需要补货的型号');
+        return;
+      }
       if (!response.ok) {
-        const payload = await response.json().catch(() => ({}));
-        throw new Error(payload?.error || `导出失败（${response.status}）`);
+        throw new Error(`导出失败（${response.status}）`);
       }
       const blob = await response.blob();
-      const fallback = `备货计划_${localDateText()}.xlsx`;
+      const fallback = `备货计划-${localDateText().replaceAll('-', '')}.xlsx`;
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
@@ -517,8 +522,8 @@ export default function SupplyPlanBoard({ token, active }) {
         </div>
         <div className="supply-plan-title-actions">
           <span>{meta.generatedAt ? `生成时间：${timestampText(meta.generatedAt)}` : ''}</span>
-          <button type="button" className="primary compact-button" disabled={exporting || loading || !pagination.totalChildItems} onClick={exportExcel}>
-            {exporting ? '正在导出...' : '导出 Excel'}
+          <button type="button" className="primary compact-button" disabled={exporting || loading} onClick={exportExcel}>
+            {exporting ? '正在生成...' : '导出备货计划'}
           </button>
         </div>
       </div>

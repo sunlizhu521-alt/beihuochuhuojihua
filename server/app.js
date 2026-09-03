@@ -31,7 +31,14 @@ import {
 } from './inventory-risk.js';
 import { buildInventoryRiskWorkbook } from './inventory-risk-export.js';
 import { buildSupplyPlanData, paginateSupplyPlanData, prepareSupplyPlanBeihuoPush, supplyPlanModelDetail } from './supply-plan.js';
-import { buildSupplyPlanExportData, formatSupplyPlanExportDate, generateSupplyPlanExcel } from './supply-plan-export.js';
+import {
+  buildSupplyPlanExportData,
+  buildSupplyPlanPurchaseExportData,
+  formatSupplyPlanCompactDate,
+  formatSupplyPlanExportDate,
+  generateSupplyPlanExcel,
+  generateSupplyPlanPurchaseExcel
+} from './supply-plan-export.js';
 
 
 import { buildStyledExcelBuffer } from '../shared/excel-export.js';
@@ -1979,6 +1986,32 @@ app.get('/api/supply-plan/model-detail', requireAuth, requirePage('supplyPlanBoa
     return res.json(detail);
   } catch (error) {
     return res.status(400).json({ error: error.message || '供应计划型号明细生成失败' });
+  }
+});
+
+app.get('/api/supply-plan/export', requireAuth, requirePage('supplyPlanBoard'), async (req, res) => {
+  try {
+    const months = req.query.horizonMonths ?? req.query.months;
+    const { payload } = supplyPlanDataset(months);
+    const exportData = buildSupplyPlanPurchaseExportData({
+      supplyPlanData: payload,
+      filters: {
+        businessUnit: req.query.businessUnit,
+        productLine: req.query.productLine,
+        productSeries: req.query.productSeries,
+        actionConclusion: req.query.actionConclusion
+      }
+    });
+    res.setHeader('Cache-Control', 'no-store');
+    if (!exportData.rows.length) return res.status(200).json({ message: '当前无需要补货的型号' });
+    const buffer = Buffer.from(await generateSupplyPlanPurchaseExcel(exportData));
+    const exportDate = formatSupplyPlanCompactDate();
+    const fileName = `备货计划-${exportDate}.xlsx`;
+    res.setHeader('Content-Disposition', `attachment; filename="supply-plan-${exportDate}.xlsx"; filename*=UTF-8''${encodeURIComponent(fileName)}`);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    return res.send(buffer);
+  } catch (error) {
+    return res.status(400).json({ error: error.message || '备货计划 Excel 生成失败' });
   }
 });
 

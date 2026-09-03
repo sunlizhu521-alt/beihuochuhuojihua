@@ -4,8 +4,11 @@ import ExcelJS from 'exceljs';
 import {
   buildSupplyPlanExportData,
   buildSupplyPlanExportWorkbook,
+  buildSupplyPlanPurchaseExportData,
+  formatSupplyPlanCompactDate,
   formatSupplyPlanExportDate,
-  generateSupplyPlanExcel
+  generateSupplyPlanExcel,
+  generateSupplyPlanPurchaseExcel
 } from './supply-plan-export.js';
 
 const now = new Date('2026-09-03T02:00:00.000Z');
@@ -33,7 +36,8 @@ const payload = {
       materialCode: '1001', sku: 'SKU-1', skuName: '护理床A1', productLifecycle: '主力',
       productPositioning: '核心', warehouses: ['101-US-海外仓'], channelKey: 'overseasUs', channel: '海外-美国',
       safetyDays: 30, onHandQty: 10, inTransitQty: 5, undeliveredQty: 3,
-      inventoryRemainingQty: 11, purchaseGap: 8, weeklyForecast: [4, 6]
+      inventoryRemainingQty: 11, purchaseGap: 8, weeklyForecast: [4, 6], forecastDaily: 2,
+      stockCoverDays: 5, daysUntilShortage: 25, safetyStockQty: 60, actionConclusion: '调整计划'
     },
     {
       modelKey: '轮椅\u001f标准\u001fB1',
@@ -67,7 +71,7 @@ test('导出数据遵循当前筛选并生成六个周指标行', () => {
   assert.equal(data.detailColumns.at(-2), '当前周');
   assert.equal(data.detailColumns.at(-1), 'W37');
   assert.deepEqual(data.detailRows.map((row) => row[17]), [
-    '销售预测', '未交付', '在途', '在库', '库存剩余数量', '建议采购'
+    '销售预测', '未交付', '在途', '在库', '预测剩余库存', '建议采购'
   ]);
   assert.deepEqual(data.detailRows.map((row) => row[18]), [4, 3, 5, 10, 11, 8]);
   assert.deepEqual(data.detailRows.map((row) => row[19]), [6, '', '', '', '', '']);
@@ -83,6 +87,40 @@ test('建议采购汇总只保留正数并关联采购分工与下单时间', ()
   const orderDate = data.purchaseRows[0][8];
   assert.deepEqual([orderDate.getFullYear(), orderDate.getMonth() + 1, orderDate.getDate()], [2026, 9, 23]);
   assert.equal(formatSupplyPlanExportDate(now), '2026-09-03');
+  assert.equal(formatSupplyPlanCompactDate(now), '20260903');
+});
+
+test('采购执行清单仅保留建议采购大于零的行并按指定字段排序', () => {
+  const data = buildSupplyPlanPurchaseExportData({ supplyPlanData: payload });
+  assert.equal(data.rows.length, 1);
+  assert.deepEqual(data.columns, [
+    '产品线', '系列', '型号', '物料编码', 'SKU', '名称', '事业部', '在库量', '在途量', '未交付量',
+    '预测日均', '库存可销天数', '距缺货天数', '安全库存数量', '建议采购数量', '动作结论'
+  ]);
+  assert.deepEqual(data.rows[0], [
+    '护理床', '星云', 'A1', '1001', 'SKU-1', '护理床A1', '海外事业一部',
+    10, 5, 3, 2, 5, 25, 60, 8, '调整计划'
+  ]);
+});
+
+test('采购执行Excel符合宋体11、浅蓝表头、居中边框、筛选和冻结要求', async () => {
+  const data = buildSupplyPlanPurchaseExportData({ supplyPlanData: payload });
+  const buffer = await generateSupplyPlanPurchaseExcel(data);
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(buffer);
+  const sheet = workbook.getWorksheet('备货计划');
+  assert.equal(sheet.rowCount, 2);
+  assert.equal(sheet.columnCount, 16);
+  assert.equal(sheet.views[0].ySplit, 1);
+  assert.equal(sheet.autoFilter, 'A1:P2');
+  assert.equal(sheet.getCell('A1').fill.fgColor.argb, 'FFDDEBF7');
+  assert.equal(sheet.getCell('A1').font.name, '宋体');
+  assert.equal(sheet.getCell('A1').font.bold, true);
+  assert.equal(sheet.getCell('A2').font.name, '宋体');
+  assert.equal(sheet.getCell('A2').font.size, 11);
+  assert.equal(sheet.getCell('A2').alignment.horizontal, 'center');
+  assert.equal(sheet.getCell('A2').alignment.vertical, 'middle');
+  assert.equal(sheet.getCell('A2').border.top.style, 'thin');
 });
 
 test('生成的Excel包含双Sheet、冻结窗格与指标样式', async () => {
