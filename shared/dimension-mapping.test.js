@@ -11,10 +11,10 @@ test('商品分类只保留真实业务字段', () => {
   assert.deepEqual(keys.filter((key) => key === 'materialCode'), ['materialCode']);
 });
 
-test('自动匹配不会把同一源列分配给两个目标字段', () => {
+test('关闭推断时字段保持空白，由用户自定义选择', () => {
   const fields = [['supplier', '供应商'], ['supplierShortName', '供应商简称']];
-  const mapping = validMappingForColumns({}, ['供应商'], fields, true);
-  assert.equal(Object.values(mapping).filter(Boolean).length, 1);
+  const mapping = validMappingForColumns({}, ['供应商'], fields, false);
+  assert.equal(Object.values(mapping).filter(Boolean).length, 0);
   assert.deepEqual(duplicateMappingColumns(mapping, fields), []);
 });
 
@@ -34,6 +34,8 @@ test('底表四个槽位均要求人工确认映射', () => {
   assert.equal(INVENTORY_SUMMARY_LIBRARY_SLOTS.length, 4);
   INVENTORY_SUMMARY_LIBRARY_SLOTS.forEach((slot) => {
     assert.equal(slot.manualFieldSelection, true);
+    assert.equal(slot.autoMap, false);
+    assert.equal(slot.reuseSavedMapping, false);
     assert.equal(slot.requireMappingConfirmation, true);
     assert.ok(slot.requiredFields.length > 0);
   });

@@ -89,7 +89,8 @@ export const DIMENSION_SLOTS = [
 ].map((slot) => slot.fields.length ? {
   ...slot,
   manualFieldSelection: true,
-  autoMap: true,
+  autoMap: false,
+  reuseSavedMapping: false,
   requireMappingConfirmation: true
 } : slot);
 
@@ -128,7 +129,8 @@ export const INVENTORY_SUMMARY_LIBRARY_SLOTS = [
 ].map((slot) => ({
   ...slot,
   manualFieldSelection: true,
-  autoMap: true,
+  autoMap: false,
+  reuseSavedMapping: false,
   requireMappingConfirmation: true
 }));
 

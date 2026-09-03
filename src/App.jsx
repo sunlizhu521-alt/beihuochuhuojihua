@@ -2802,7 +2802,7 @@ function FieldMapping({ fields, columns, mapping, onChange, requiredFields = [],
   const requiredMappedCount = requiredFields.filter((key) => mapping[key]).length;
   return (
     <div className="mapping-grid">
-      {manual && <p className="mapping-grid-note">{note || '请核对标记为必选的字段；其他未选择字段按空值保存。'}</p>}
+      {manual && <p className="mapping-grid-note">请逐项手动选择源字段，系统不会自动预选。{note ? ` ${note}` : ' 其他未选择字段按空值保存。'}</p>}
       <p className="mapping-grid-summary">已映射 {mappedCount}/{fields.length}{requiredFields.length ? `，必选 ${requiredMappedCount}/${requiredFields.length}` : ''}</p>
       {fields.map(([key, label, description]) => (
         <label key={key}>
@@ -2985,6 +2985,12 @@ function DimensionLibrary({ token, reloadDemands, reloadDemandData = true, setMe
       sheetNames: [],
       selectedSheetNames: [],
       sheetPreviews: [],
+      ...(slot.reuseSavedMapping === false ? {
+        mapping: {},
+        savedMapping: {},
+        sheetMappings: {},
+        mappingConfirmed: false
+      } : {}),
       progress: 12,
       statusText: '正在读取文件...',
       statusType: 'active',
@@ -3003,21 +3009,22 @@ function DimensionLibrary({ token, reloadDemands, reloadDemandData = true, setMe
       const requiresMultipleSheets = Number(slot.requiredSheetCount || 0) > 0;
       setLocal((prev) => {
         const prevState = prev[slot.id] || {};
-        const savedMapping = [
+        const savedMappingCandidate = [
           prevState.mapping,
           prevState.savedMapping,
           mappingPresetsRef.current[slot.id],
           record?.mapping
         ].find((candidate) => hasMappedInventoryFields(candidate, slot.fields || [])) || {};
+        const savedMapping = slot.reuseSavedMapping === false ? {} : savedMappingCandidate;
         const hasSavedMapping = hasMappedInventoryFields(savedMapping, slot.fields || []);
-        const sheetMappings = { ...(prevState.sheetMappings || {}) };
+        const sheetMappings = slot.reuseSavedMapping === false ? {} : { ...(prevState.sheetMappings || {}) };
         const mapping = validMappingForColumns(
           sheetMappings[''] || savedMapping,
           columns,
           slot.fields,
           Boolean(slot.autoMap) || (!slot.manualFieldSelection && !hasSavedMapping)
         );
-        if (record?.sheetName) {
+        if (slot.reuseSavedMapping !== false && record?.sheetName) {
           const recordSheet = (payload.sheetPreviews || []).find((item) => item.sheetName === record.sheetName);
           sheetMappings[record.sheetName] = validMappingForColumns(
             record.mapping || {},
@@ -3091,9 +3098,7 @@ function DimensionLibrary({ token, reloadDemands, reloadDemandData = true, setMe
     const sheetMappings = { ...(state.sheetMappings || {}), [currentKey]: state.mapping || {} };
     const savedMapping = [
       sheetMappings[nextKey],
-      state.mapping,
-      state.savedMapping,
-      mappingPresetsRef.current[slot.id]
+      ...(slot.reuseSavedMapping === false ? [] : [state.mapping, state.savedMapping, mappingPresetsRef.current[slot.id]])
     ].find((candidate) => hasMappedInventoryFields(candidate, slot.fields || [])) || {};
     const hasSavedMapping = hasMappedInventoryFields(savedMapping, slot.fields || []);
     const mapping = validMappingForColumns(
