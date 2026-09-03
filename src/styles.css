@@ -8138,7 +8138,18 @@ th {
   font-size: .75rem;
 }
 
-.supply-plan-title-row > span {
+.supply-plan-title-actions,
+.supply-plan-title-actions > span {
+  display: flex;
+  align-items: center;
+}
+
+.supply-plan-title-actions {
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.supply-plan-title-actions > span {
   color: #64748b;
   font-size: .74rem;
   white-space: nowrap;
@@ -8605,7 +8616,7 @@ th {
     flex-direction: column;
   }
 
-  .supply-plan-title-row > span,
+  .supply-plan-title-actions,
   .supply-plan-toolbar .section-count {
     margin-left: 0;
   }

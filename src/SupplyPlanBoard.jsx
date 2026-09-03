@@ -86,6 +86,24 @@ async function apiRequest(path, token, options = {}) {
   return payload;
 }
 
+function responseFileName(response, fallback) {
+  const disposition = response.headers.get('content-disposition') || '';
+  const utf8Name = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+  if (utf8Name) {
+    try {
+      return decodeURIComponent(utf8Name);
+    } catch {
+      return fallback;
+    }
+  }
+  return disposition.match(/filename="?([^";]+)"?/i)?.[1] || fallback;
+}
+
+function localDateText(value = new Date()) {
+  const part = (number) => String(number).padStart(2, '0');
+  return `${value.getFullYear()}-${part(value.getMonth() + 1)}-${part(value.getDate())}`;
+}
+
 function stickyStyle(columns, index) {
   const width = columns[index].width;
   const left = columns.slice(0, index).reduce((sum, column) => sum + column.width, 0);
@@ -251,6 +269,7 @@ export default function SupplyPlanBoard({ token, active }) {
   const [meta, setMeta] = useState({ updatedBy: '', updatedAt: '', generatedAt: '' });
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -348,6 +367,45 @@ export default function SupplyPlanBoard({ token, active }) {
     }
   }
 
+  async function exportExcel() {
+    if (exporting || loading || !pagination.totalChildItems) return;
+    const estimatedRows = pagination.totalChildItems * SUPPLY_PLAN_ROW_TYPES.length;
+    const confirmed = window.confirm(`当前视野 ${horizonMonths} 个月，共 ${pagination.totalItems} 个型号，预计生成 ${estimatedRows} 行。\n\n确认导出 Excel？`);
+    if (!confirmed) return;
+    setExporting(true);
+    setError('');
+    setMessage('');
+    try {
+      const response = await fetch(`${API}/api/supply-plan/export`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ horizonMonths, filters: filterQuery })
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload?.error || `导出失败（${response.status}）`);
+      }
+      const blob = await response.blob();
+      const fallback = `备货计划_${localDateText()}.xlsx`;
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = responseFileName(response, fallback);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setMessage(`导出完成：${link.download}`);
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setExporting(false);
+    }
+  }
+
   function changeHorizon(months) {
     setHorizonMonths(months);
     setCurrentPage(1);
@@ -440,7 +498,12 @@ export default function SupplyPlanBoard({ token, active }) {
           </div>
           <p>数据来源：库存数据(18)、未交付数据(19)、M+6预测(21)及维度表；点击“重新计算”读取最新数据。</p>
         </div>
-        <span>{meta.generatedAt ? `生成时间：${timestampText(meta.generatedAt)}` : ''}</span>
+        <div className="supply-plan-title-actions">
+          <span>{meta.generatedAt ? `生成时间：${timestampText(meta.generatedAt)}` : ''}</span>
+          <button type="button" className="primary compact-button" disabled={exporting || loading || !pagination.totalChildItems} onClick={exportExcel}>
+            {exporting ? '正在导出...' : '导出 Excel'}
+          </button>
+        </div>
       </div>
 
       {params ? <RouteSettings params={params} saving={saving} meta={meta} horizonMonths={horizonMonths} onHorizonChange={changeHorizon} onChange={changeParam} onSave={saveParams} /> : null}

@@ -31,6 +31,7 @@ import {
 } from './inventory-risk.js';
 import { buildInventoryRiskWorkbook } from './inventory-risk-export.js';
 import { buildSupplyPlanData, paginateSupplyPlanData, supplyPlanModelDetail } from './supply-plan.js';
+import { buildSupplyPlanExportData, formatSupplyPlanExportDate, generateSupplyPlanExcel } from './supply-plan-export.js';
 
 
 import { buildStyledExcelBuffer } from '../shared/excel-export.js';
@@ -1976,6 +1977,29 @@ app.get('/api/supply-plan/model-detail', requireAuth, requirePage('supplyPlanBoa
     return res.json(detail);
   } catch (error) {
     return res.status(400).json({ error: error.message || '供应计划型号明细生成失败' });
+  }
+});
+
+app.post('/api/supply-plan/export', requireAuth, requirePage('supplyPlanBoard'), async (req, res) => {
+  try {
+    const months = req.body?.horizonMonths ?? req.body?.months;
+    const filters = req.body?.filters && typeof req.body.filters === 'object' ? req.body.filters : {};
+    const { payload, settings } = supplyPlanDataset(months);
+    const exportData = buildSupplyPlanExportData({
+      supplyPlanData: payload,
+      supplyPlanSettings: settings.params,
+      assignmentRows: getDimensionRows('purchaseAssignment'),
+      filters
+    });
+    const buffer = Buffer.from(await generateSupplyPlanExcel(exportData));
+    const exportDate = formatSupplyPlanExportDate();
+    const fileName = `备货计划_${exportDate}.xlsx`;
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Content-Disposition', `attachment; filename="supply-plan_${exportDate}.xlsx"; filename*=UTF-8''${encodeURIComponent(fileName)}`);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    return res.send(buffer);
+  } catch (error) {
+    return res.status(400).json({ error: error.message || '供应计划 Excel 生成失败' });
   }
 });
 
