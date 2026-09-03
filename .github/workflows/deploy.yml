@@ -58,7 +58,7 @@ jobs:
             ARCHIVE=/tmp/beihuochuhuojihua-deploy/beihuochuhuojihua.tar.gz
             BACKUP_DIR=/home/ubuntu/backups/beihuochuhuojihua
             APP_NAME=beihuochuhuojihua
-            APP_PORT=4008
+            APP_PORT=4009
 
             mkdir -p "$APP_DIR" "$BACKUP_DIR"
 
@@ -82,6 +82,7 @@ jobs:
             tar -xzf "$ARCHIVE" -C "$APP_DIR"
             cd "$APP_DIR"
             npm ci
+            export VITE_API_BASE_URL=/beihuochuhuojihua-api
             npm run build
 
             export PORT="$APP_PORT"

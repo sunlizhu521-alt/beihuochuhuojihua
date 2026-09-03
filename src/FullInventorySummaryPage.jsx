@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { writeStyledExcelFile } from '../shared/excel-export.js';
+import { API } from './api-base.js';
 
-const API = import.meta.env.DEV ? 'http://localhost:4003' : '';
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 
 function emptyFilters() {

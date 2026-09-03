@@ -1,6 +1,7 @@
 import React, { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { writeStyledExcelFile } from '../shared/excel-export.js';
+import { API } from './api-base.js';
 import { getLoadingProgress, installGlobalFetchProgress, subscribeLoadingProgress } from './loading-progress.js';
 import { installStaticPreviewApi } from './static-preview-api.js';
 
@@ -11,7 +12,6 @@ const FullInventorySummaryPage = React.lazy(() => import('./FullInventorySummary
 installStaticPreviewApi();
 installGlobalFetchProgress();
 
-const API = import.meta.env.DEV ? 'http://localhost:4003' : '';
 const ACTIVE_PAGE_KEY = 'gendanjinduActivePage';
 
 const PAGE_ORDER = [

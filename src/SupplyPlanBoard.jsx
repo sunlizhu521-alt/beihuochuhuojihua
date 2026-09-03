@@ -10,8 +10,8 @@ import {
   groupSupplyPlanRows,
   supplyPlanRowKey
 } from './supply-plan.js';
+import { API } from './api-base.js';
 
-const API = import.meta.env.DEV ? 'http://localhost:4003' : '';
 const CHANNELS = [
   { key: 'overseasUs', label: '海外-美国' },
   { key: 'overseasEurope', label: '海外-欧洲' },
