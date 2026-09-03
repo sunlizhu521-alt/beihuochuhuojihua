@@ -100,7 +100,15 @@ const FIELD_ALIASES = {
   month4: ['11', 'M4', '第4个月', 'Month4', 'month4', 'm4'],
   month5: ['12', 'M5', '第5个月', 'Month5', 'month5', 'm5'],
   month6: ['1', 'M6', '第6个月', 'Month6', 'month6', 'm6'],
-  skuName: ['SKU名称', '商品名称', '产品名称', '名称']
+  skuName: ['SKU名称', '商品名称', '产品名称', '名称'],
+  productLifecycle: ['产品生命周期', '生命周期', '生命周期阶段', '阶段'],
+  productPositioning: ['产品定位', '定位', '市场定位'],
+  forecastM1: ['M1', '第1个月', 'month1', '1月'],
+  forecastM2: ['M2', '第2个月', 'month2', '2月'],
+  forecastM3: ['M3', '第3个月', 'month3', '3月'],
+  forecastM4: ['M4', '第4个月', 'month4', '4月'],
+  forecastM5: ['M5', '第5个月', 'month5', '5月'],
+  forecastM6: ['M6', '第6个月', 'month6', '6月']
 };
 
 const SLOT_SCHEMAS = {

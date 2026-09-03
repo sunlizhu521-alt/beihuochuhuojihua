@@ -18,15 +18,13 @@ const rows = [
   { businessUnit: '国内事业部', materialCode: '2002', sku: 'SKU-2', onHandQty: 10, inTransitQty: 0, safetyDays: 5 }
 ];
 
-test('供应计划固定生成2026年W32到W52共21周', () => {
-  const weeks = buildSupplyPlanWeeks();
-  assert.equal(weeks.length, 21);
+test('供应计划从当前ISO周生成可选月份视野', () => {
+  const weeks = buildSupplyPlanWeeks(6, new Date('2026-09-03T02:00:00.000Z'));
+  assert.ok(weeks.length >= 26 && weeks.length <= 28);
   assert.deepEqual(weeks[0], {
-    key: 'W32', label: 'W32', dateRange: '8/10-8/16', startDate: '2026-08-10', endDate: '2026-08-16'
+    key: '2026-W36', label: 'W36', dateRange: '8/31-9/6', startDate: '2026-08-31', endDate: '2026-09-06'
   });
-  assert.deepEqual(weeks.at(-1), {
-    key: 'W52', label: 'W52', dateRange: '12/28-1/3', startDate: '2026-12-28', endDate: '2027-01-03'
-  });
+  assert.ok(buildSupplyPlanWeeks(24, new Date('2026-09-03T02:00:00.000Z')).length > weeks.length);
 });
 
 test('周预测支持W周和第X周表头且重复键以后出现的行为准', () => {
@@ -68,16 +66,17 @@ test('安全库存导入按物料编码匹配并兼容Excel数字尾缀', () => 
   assert.equal(applied.safetyOverrides[supplyPlanRowKey(rows[1])], 888);
 });
 
-test('采购缺口按21周预测、四舍五入日均和安全库存计算', () => {
-  const forecast = Array.from({ length: 21 }, () => 7);
-  const calculated = calculateSupplyPlanRow(rows[0], forecast);
-  assert.equal(calculated.forecastTotal, 147);
+test('采购缺口只用本周预测并扣减在库、在途和未交付', () => {
+  const source = { onHandQty: 5, inTransitQty: 2, undeliveredQty: 3, safetyDays: 10, forecastDailyQty: 1 };
+  const forecast = [7, 70];
+  const calculated = calculateSupplyPlanRow(source, forecast);
+  assert.equal(calculated.forecastTotal, 77);
   assert.equal(calculated.dailyForecast, 1);
   assert.equal(calculated.safetyStockQty, 10);
-  assert.equal(calculated.purchaseGap, 37);
-  const overridden = calculateSupplyPlanRow(rows[0], forecast, 200);
-  assert.equal(overridden.safetyStockQty, 200);
-  assert.equal(overridden.purchaseGap, 227);
+  assert.equal(calculated.purchaseGap, 7);
+  const overridden = calculateSupplyPlanRow(source, forecast, 20);
+  assert.equal(overridden.safetyStockQty, 20);
+  assert.equal(overridden.purchaseGap, 17);
 });
 
 test('导入文件缺少关键列时给出明确错误', () => {
@@ -113,9 +112,9 @@ test('供应计划筛选选项按其他已选条件联动', () => {
   assert.deepEqual(options.productSeries, ['A系列']);
 });
 
-test('供应计划固定使用六个指标并采用建议采购和建议出货口径', () => {
+test('供应计划固定使用五个指标', () => {
   assert.deepEqual(SUPPLY_PLAN_ROW_TYPES, [
-    '销售预测', '未交付量', '在途量', '在库量', '建议采购', '建议出货'
+    '销售预测', '未交付', '在途', '在库', '建议采购'
   ]);
 });
 

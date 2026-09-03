@@ -25,12 +25,12 @@ import {
 import {
   buildBeiHuoReviewAnalysis,
   buildInventoryRiskAnalysis,
-  buildSupplyPlanSummary,
   inventoryRiskCacheKey,
   normalizeInventoryRiskParams,
   normalizeSupplyPlanParams
 } from './inventory-risk.js';
 import { buildInventoryRiskWorkbook } from './inventory-risk-export.js';
+import { buildSupplyPlanData } from './supply-plan.js';
 
 
 import { buildStyledExcelBuffer } from '../shared/excel-export.js';
@@ -1570,6 +1570,32 @@ function saveSupplyPlanSettings(input, userName) {
   return { params, updatedBy, updatedAt };
 }
 
+function supplyPlanSourceData() {
+  return Object.fromEntries(['inventorySummaryFile18', 'inventorySummaryFile19', 'inventorySummaryFile21'].map((slotId) => [
+    slotId,
+    { rows: getDimensionRows(slotId) }
+  ]));
+}
+
+function supplyPlanDimensionData() {
+  const legacyFeedbackRows = all(
+    `SELECT rows_json
+     FROM dimension_files
+     WHERE slot_id LIKE 'businessUnitFeedback%' AND applied = 1
+     ORDER BY slot_id`
+  ).flatMap((record) => parseJson(record.rows_json, []));
+  const currentPositioningRows = getDimensionRows('dimensionSpare').map((row) => ({
+    ...row,
+    productLifecycle: row.productLifecycle || row.unifiedStage || '',
+    productPositioning: row.productPositioning || row.unifiedPositioning || ''
+  }));
+  return {
+    productCategory: getDimensionRows('productCategory'),
+    businessUnitFeedback: [...legacyFeedbackRows, ...currentPositioningRows],
+    warehouseName: getDimensionRows('spare1')
+  };
+}
+
 function inventoryRiskSourceVersion() {
   return all(
     'SELECT slot_id, file_name, updated_at, applied, length(rows_json) AS rows_size FROM dimension_files WHERE applied = 1 ORDER BY slot_id'
@@ -1887,12 +1913,14 @@ app.get('/api/inventory-risk/params', requireAuth, requirePage('inventoryRisk'),
   return res.json(currentInventoryRiskSettings());
 });
 
-app.get('/api/supply-plan/summary', requireAuth, requirePage('supplyPlanBoard'), (_req, res) => {
+app.get('/api/supply-plan/summary', requireAuth, requirePage('supplyPlanBoard'), (req, res) => {
   try {
     const settings = currentSupplyPlanSettings();
-    const payload = buildSupplyPlanSummary({
-      inventoryModel: inventorySummaryData(),
-      params: settings.params
+    const payload = buildSupplyPlanData({
+      inventorySummaryData: supplyPlanSourceData(),
+      dimensionData: supplyPlanDimensionData(),
+      supplyPlanSettings: settings.params,
+      months: req.query.months
     });
     res.setHeader('Cache-Control', 'no-store');
     return res.json({
@@ -1904,6 +1932,11 @@ app.get('/api/supply-plan/summary', requireAuth, requirePage('supplyPlanBoard'),
   } catch (error) {
     return res.status(400).json({ error: error.message || '供应计划数据生成失败' });
   }
+});
+
+app.get('/api/supply-plan/dimension-data', requireAuth, requirePage('supplyPlanBoard'), (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  return res.json(supplyPlanDimensionData());
 });
 
 app.get('/api/supply-plan/params', requireAuth, requirePage('supplyPlanBoard'), (_req, res) => {

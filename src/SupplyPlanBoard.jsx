@@ -3,8 +3,8 @@ import {
   SUPPLY_PLAN_FILTER_FIELDS,
   SUPPLY_PLAN_PAGE_SIZE,
   SUPPLY_PLAN_ROW_TYPES,
-  SUPPLY_PLAN_WEEKS,
   buildSupplyPlanFilterOptions,
+  buildSupplyPlanWeeks,
   calculateSupplyPlanRow,
   filterSupplyPlanRows,
   groupSupplyPlanRows,
@@ -25,6 +25,7 @@ const PERIOD_FIELDS = [
   ['averageLeadTimeDays', '平均交期'],
   ['contractSigningDays', '合同签订']
 ];
+const HORIZON_MONTHS = [6, 9, 12, 15, 18, 21, 24];
 const SUMMARY_FIXED_COLUMNS = [
   { key: 'productLine', label: '产品线', width: 92 },
   { key: 'productSeries', label: '系列', width: 92 },
@@ -36,7 +37,9 @@ const CHILD_DETAIL_COLUMNS = [
   { key: 'businessUnit', label: '事业部', width: 116 },
   { key: 'materialCode', label: '物料编码', width: 112 },
   { key: 'sku', label: 'SKU', width: 130 },
-  { key: 'materialName', label: '名称', width: 210 }
+  { key: 'skuName', label: '名称', width: 210 },
+  { key: 'productLifecycle', label: '产品阶段', width: 100 },
+  { key: 'productPositioning', label: '产品定位', width: 100 }
 ];
 const EXPANDED_FIXED_COLUMNS = [
   ...SUMMARY_FIXED_COLUMNS.slice(0, 3),
@@ -97,22 +100,23 @@ function stickyStyle(columns, index) {
 }
 
 function metricWeekValue(row, metric, weekIndex) {
-  if (metric === '销售预测' || metric === '建议出货') return row.weeklyForecast?.[weekIndex] || 0;
-  if (metric === '未交付量') return row.undeliveredQty;
-  if (metric === '在途量') return row.inTransitQty;
-  if (metric === '在库量') return row.onHandQty;
-  return row.purchaseGap;
+  if (metric === '销售预测') return row.weeklyForecast?.[weekIndex] || 0;
+  if (weekIndex > 0) return 0;
+  if (metric === '未交付') return row.undeliveredQty;
+  if (metric === '在途') return row.inTransitQty;
+  if (metric === '在库') return row.onHandQty;
+  return metric === '建议采购' ? row.purchaseGap : 0;
 }
 
 function metricDataValue(row, metric) {
-  if (metric === '销售预测' || metric === '建议出货') return row.forecastTotal;
-  if (metric === '未交付量') return row.undeliveredQty;
-  if (metric === '在途量') return row.inTransitQty;
-  if (metric === '在库量') return row.onHandQty;
-  return row.purchaseGap;
+  if (metric === '销售预测') return row.forecastTotal;
+  if (metric === '未交付') return row.undeliveredQty;
+  if (metric === '在途') return row.inTransitQty;
+  if (metric === '在库') return row.onHandQty;
+  return metric === '建议采购' ? row.purchaseGap : 0;
 }
 
-function SupplyPlanMetricRows({ row, rowKey, fixedColumns, level, expanded = false, childCount = 0, onToggle }) {
+function SupplyPlanMetricRows({ row, rowKey, fixedColumns, weeks, level, expanded = false, childCount = 0, onToggle }) {
   return SUPPLY_PLAN_ROW_TYPES.map((metric, metricIndex) => (
     <tr
       key={`${rowKey}-${metric}`}
@@ -124,7 +128,8 @@ function SupplyPlanMetricRows({ row, rowKey, fixedColumns, level, expanded = fal
         if (level === 'parent' && column.key === 'businessUnit') content = '全量汇总';
         if (level === 'parent' && column.key === 'materialCode') content = `${childCount} 项`;
         if (level === 'parent' && column.key === 'sku') content = '—';
-        if (level === 'parent' && column.key === 'materialName') content = '按型号汇总';
+        if (level === 'parent' && column.key === 'skuName') content = '按型号汇总';
+        if (level === 'parent' && ['sku', 'productLifecycle', 'productPositioning'].includes(column.key)) content = '—';
         return (
           <td
             key={column.key}
@@ -145,7 +150,7 @@ function SupplyPlanMetricRows({ row, rowKey, fixedColumns, level, expanded = fal
       }) : null}
       <td className="supply-plan-sticky metric-name" style={stickyStyle(fixedColumns, fixedColumns.length - 1)}>{metric}</td>
       <td className="numeric-cell supply-plan-data-column">{numberText(metricDataValue(row, metric))}</td>
-      {SUPPLY_PLAN_WEEKS.map((week, weekIndex) => {
+      {weeks.map((week, weekIndex) => {
         const value = metricWeekValue(row, metric, weekIndex);
         return (
           <td key={week.key} className={`numeric-cell${metric === '建议采购' && value > 0 ? ' gap-positive' : ''}`}>
@@ -157,7 +162,7 @@ function SupplyPlanMetricRows({ row, rowKey, fixedColumns, level, expanded = fal
   ));
 }
 
-function RouteSettings({ params, saving, meta, onChange, onSave }) {
+function RouteSettings({ params, saving, meta, horizonMonths, onHorizonChange, onChange, onSave }) {
   return (
     <section className="supply-plan-route-wrap">
       <div className="supply-plan-section-heading">
@@ -167,7 +172,15 @@ function RouteSettings({ params, saving, meta, onChange, onSave }) {
             ? `腾讯云最后保存：${meta.updatedBy || '未知用户'}，${timestampText(meta.updatedAt)}`
             : '暂无历史设置，当前使用系统默认值'}</p>
         </div>
-        <button type="button" className="primary" disabled={saving} onClick={onSave}>{saving ? '保存中...' : '保存'}</button>
+        <div className="supply-plan-route-actions">
+          <label>
+            <span>月选视野</span>
+            <select aria-label="月选视野" value={horizonMonths} onChange={(event) => onHorizonChange(Number(event.target.value))}>
+              {HORIZON_MONTHS.map((months) => <option key={months} value={months}>{months} 个月</option>)}
+            </select>
+          </label>
+          <button type="button" className="primary" disabled={saving} onClick={onSave}>{saving ? '保存中...' : '保存'}</button>
+        </div>
       </div>
       <div className="supply-plan-route-table-wrap">
         <table className="supply-plan-route-table">
@@ -224,20 +237,24 @@ export default function SupplyPlanBoard({ token, active }) {
   const [currentPage, setCurrentPage] = useState(1);
   const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [expandedModels, setExpandedModels] = useState(() => new Set());
+  const [horizonMonths, setHorizonMonths] = useState(6);
+  const [weeks, setWeeks] = useState(() => buildSupplyPlanWeeks(6));
 
-  async function loadSummary({ manual = false } = {}) {
+  async function loadSummary({ manual = false, months = horizonMonths } = {}) {
     setLoading(true);
     setError('');
     try {
-      const payload = await apiRequest('/api/supply-plan/summary', token);
+      const payload = await apiRequest(`/api/supply-plan/summary?months=${months}`, token);
       setRows(Array.isArray(payload.rows) ? payload.rows : []);
+      setWeeks(Array.isArray(payload.weeks) ? payload.weeks : buildSupplyPlanWeeks(months));
+      setHorizonMonths(payload.horizonMonths || months);
       setParams(payload.params);
       setMeta({
         updatedBy: payload.updatedBy || '',
         updatedAt: payload.updatedAt || '',
         generatedAt: payload.generatedAt || ''
       });
-      if (manual) setMessage(`已读取服务器最新库存数据，共 ${payload.rows?.length || 0} 个事业部＋物料编码。`);
+      if (manual) setMessage(`已读取底表18/19/21最新数据，共 ${payload.rows?.length || 0} 个事业部＋物料编码。`);
     } catch (requestError) {
       setError(requestError.message);
     } finally {
@@ -285,14 +302,22 @@ export default function SupplyPlanBoard({ token, active }) {
     }
   }
 
+  function changeHorizon(months) {
+    setHorizonMonths(months);
+    setCurrentPage(1);
+    setExpandedModels(new Set());
+    loadSummary({ months });
+  }
+
   const calculatedRows = useMemo(() => rows.map((row) => {
     const safetyDays = params?.channels?.[row.channelKey]?.safetyDays ?? row.safetyDays;
     return calculateSupplyPlanRow(
       { ...row, safetyDays },
-      [],
-      null
+      row.weeklyForecast,
+      null,
+      weeks.length
     );
-  }), [rows, params]);
+  }), [rows, params, weeks.length]);
 
   const filterOptions = useMemo(
     () => buildSupplyPlanFilterOptions(calculatedRows, filters),
@@ -302,7 +327,7 @@ export default function SupplyPlanBoard({ token, active }) {
     () => filterSupplyPlanRows(calculatedRows, filters),
     [calculatedRows, filters]
   );
-  const modelGroups = useMemo(() => groupSupplyPlanRows(filteredRows), [filteredRows]);
+  const modelGroups = useMemo(() => groupSupplyPlanRows(filteredRows, weeks.length), [filteredRows, weeks.length]);
 
   const totalPages = Math.max(1, Math.ceil(modelGroups.length / SUPPLY_PLAN_PAGE_SIZE));
   const visibleGroups = useMemo(() => {
@@ -352,12 +377,12 @@ export default function SupplyPlanBoard({ token, active }) {
             <h2>供应计划工具</h2>
             <button type="button" className="primary compact-button" disabled={loading} onClick={() => loadSummary({ manual: true })}>{loading ? '重新计算中...' : '重新计算'}</button>
           </div>
-          <p>库存来源：当前服务器库存汇总；点击“重新计算”读取最新数据。</p>
+          <p>数据来源：库存数据(18)、未交付数据(19)、M+6预测(21)及维度表；点击“重新计算”读取最新数据。</p>
         </div>
         <span>{meta.generatedAt ? `生成时间：${timestampText(meta.generatedAt)}` : ''}</span>
       </div>
 
-      {params ? <RouteSettings params={params} saving={saving} meta={meta} onChange={changeParam} onSave={saveParams} /> : null}
+      {params ? <RouteSettings params={params} saving={saving} meta={meta} horizonMonths={horizonMonths} onHorizonChange={changeHorizon} onChange={changeParam} onSave={saveParams} /> : null}
 
       <div className="toolbar supply-plan-toolbar">
         <span className="section-count">全量跟单计划：当前显示 {modelGroups.length} 个产品型号，包含 {filteredRows.length} / {calculatedRows.length} 个事业部＋物料编码</span>
@@ -402,7 +427,7 @@ export default function SupplyPlanBoard({ token, active }) {
                 <th key={column.key} className={`supply-plan-sticky${CHILD_DETAIL_COLUMNS.some((detail) => detail.key === column.key) ? ' supply-plan-detail-column' : ''}`} style={stickyStyle(fixedColumns, index)}>{column.label}</th>
               ))}
               <th className="supply-plan-data-column">数据</th>
-              {SUPPLY_PLAN_WEEKS.map((week) => (
+              {weeks.map((week) => (
                 <th key={week.key} className="week-column"><strong>{week.label}</strong><small>{week.dateRange}</small></th>
               ))}
             </tr>
@@ -416,6 +441,7 @@ export default function SupplyPlanBoard({ token, active }) {
                     row={group}
                     rowKey={`parent-${group.key}`}
                     fixedColumns={fixedColumns}
+                    weeks={weeks}
                     level="parent"
                     expanded={expanded}
                     childCount={group.children.length}
@@ -427,13 +453,14 @@ export default function SupplyPlanBoard({ token, active }) {
                       row={child}
                       rowKey={`child-${group.key}-${supplyPlanRowKey(child)}`}
                       fixedColumns={fixedColumns}
+                      weeks={weeks}
                       level="child"
                     />
                   )) : null}
                 </Fragment>
               );
             })}
-            {!visibleGroups.length ? <tr><td className="empty-cell" colSpan={fixedColumns.length + 1 + SUPPLY_PLAN_WEEKS.length}>暂无可展示的供应计划数据</td></tr> : null}
+            {!visibleGroups.length ? <tr><td className="empty-cell" colSpan={fixedColumns.length + 1 + weeks.length}>暂无可展示的供应计划数据</td></tr> : null}
           </tbody>
         </table>
       </div>

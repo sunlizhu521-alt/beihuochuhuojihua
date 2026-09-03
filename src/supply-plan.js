@@ -1,33 +1,44 @@
 export const SUPPLY_PLAN_PAGE_SIZE = 50;
 export const SUPPLY_PLAN_ROW_TYPES = Object.freeze([
   '销售预测',
-  '未交付量',
-  '在途量',
-  '在库量',
-  '建议采购',
-  '建议出货'
+  '未交付',
+  '在途',
+  '在库',
+  '建议采购'
 ]);
+
+const HORIZON_MONTH_OPTIONS = new Set([6, 9, 12, 15, 18, 21, 24]);
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 function dateLabel(date) {
   return `${date.getUTCMonth() + 1}/${date.getUTCDate()}`;
 }
 
-export function buildSupplyPlanWeeks() {
-  const start = Date.UTC(2026, 7, 10);
-  return Array.from({ length: 21 }, (_, index) => {
-    const monday = new Date(start + index * 7 * 24 * 60 * 60 * 1000);
+export function buildSupplyPlanWeeks(months = 6, now = new Date()) {
+  const horizonMonths = HORIZON_MONTH_OPTIONS.has(Number(months)) ? Number(months) : 6;
+  const current = new Date(now);
+  const currentDay = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth(), current.getUTCDate()));
+  const start = new Date(currentDay);
+  start.setUTCDate(start.getUTCDate() - ((start.getUTCDay() || 7) - 1));
+  const end = new Date(Date.UTC(currentDay.getUTCFullYear(), currentDay.getUTCMonth() + horizonMonths, currentDay.getUTCDate()));
+  const weeks = [];
+  for (let monday = start; monday < end; monday = new Date(monday.getTime() + 7 * DAY_MS)) {
     const sunday = new Date(monday.getTime() + 6 * 24 * 60 * 60 * 1000);
-    return {
-      key: `W${32 + index}`,
-      label: `W${32 + index}`,
+    const thursday = new Date(monday);
+    thursday.setUTCDate(thursday.getUTCDate() + 3);
+    const isoYear = thursday.getUTCFullYear();
+    const yearStart = new Date(Date.UTC(isoYear, 0, 1));
+    const week = Math.ceil((((thursday - yearStart) / DAY_MS) + 1) / 7);
+    weeks.push({
+      key: `${isoYear}-W${String(week).padStart(2, '0')}`,
+      label: `W${week}`,
       dateRange: `${dateLabel(monday)}-${dateLabel(sunday)}`,
       startDate: monday.toISOString().slice(0, 10),
       endDate: sunday.toISOString().slice(0, 10)
-    };
-  });
+    });
+  }
+  return weeks;
 }
-
-export const SUPPLY_PLAN_WEEKS = Object.freeze(buildSupplyPlanWeeks());
 
 export const SUPPLY_PLAN_FILTER_FIELDS = Object.freeze([
   { key: 'businessUnit', label: '事业部' },
@@ -79,7 +90,7 @@ const SUPPLY_PLAN_SUM_FIELDS = Object.freeze([
   'purchaseGap'
 ]);
 
-export function groupSupplyPlanRows(rows = [], weekCount = SUPPLY_PLAN_WEEKS.length) {
+export function groupSupplyPlanRows(rows = [], weekCount = Math.max(0, ...rows.map((row) => row?.weeklyForecast?.length || 0))) {
   const groups = new Map();
   rows.forEach((row) => {
     const key = supplyPlanModelKey(row);
@@ -150,7 +161,7 @@ function importKeyType(header) {
   return header.includes('物料编码') ? 'materialCode' : 'sku';
 }
 
-export function parseSupplyPlanWorksheet(aoa, { mode = 'forecast', weekCount = SUPPLY_PLAN_WEEKS.length } = {}) {
+export function parseSupplyPlanWorksheet(aoa, { mode = 'forecast', weekCount = 21 } = {}) {
   if (!Array.isArray(aoa) || aoa.length < 2) throw new Error('导入文件没有可读取的数据行');
   const headers = (aoa[0] || []).map(headerText);
   const keyIndex = headers.findIndex((header) => header.toUpperCase().includes('SKU') || header.includes('物料编码'));
@@ -238,17 +249,20 @@ export function applySupplyPlanImport(rows, parsed, currentForecasts = {}, curre
   };
 }
 
-export function calculateSupplyPlanRow(row, forecast = [], safetyOverride = null, weekCount = SUPPLY_PLAN_WEEKS.length) {
+export function calculateSupplyPlanRow(row, forecast = row?.weeklyForecast || [], safetyOverride = null, weekCount = forecast.length) {
   const weeklyForecast = Array.from({ length: weekCount }, (_, index) => numberValue(forecast[index]));
   const forecastTotal = weeklyForecast.reduce((sum, value) => sum + value, 0);
-  const dailyForecast = Math.round(forecastTotal / (weekCount * 7));
+  const dailyForecast = Math.round(numberValue(row?.forecastDailyQty) || (weekCount ? forecastTotal / (weekCount * 7) : 0));
   const calculatedSafety = dailyForecast * numberValue(row?.safetyDays);
   const safetyStockQty = safetyOverride === null || safetyOverride === undefined
     ? calculatedSafety
     : numberValue(safetyOverride);
   const purchaseGap = Math.max(
     0,
-    safetyStockQty + forecastTotal - numberValue(row?.onHandQty) - numberValue(row?.inTransitQty)
+    safetyStockQty + numberValue(weeklyForecast[0])
+      - numberValue(row?.onHandQty)
+      - numberValue(row?.inTransitQty)
+      - numberValue(row?.undeliveredQty)
   );
   return {
     ...row,
