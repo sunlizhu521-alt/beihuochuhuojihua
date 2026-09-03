@@ -1,4 +1,4 @@
-name: GitHub Pages Preview
+name: GitHub Pages
 
 on:
   push:
@@ -34,7 +34,7 @@ jobs:
       - name: Build frontend
         run: npm run build
         env:
-          VITE_STATIC_PREVIEW: 'true'
+          VITE_APP_REDIRECT_URL: 'https://129.211.9.242/beihuochuhuojihua/'
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

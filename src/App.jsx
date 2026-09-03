@@ -3,13 +3,11 @@ import { createPortal } from 'react-dom';
 import { writeStyledExcelFile } from '../shared/excel-export.js';
 import { API } from './api-base.js';
 import { getLoadingProgress, installGlobalFetchProgress, subscribeLoadingProgress } from './loading-progress.js';
-import { installStaticPreviewApi } from './static-preview-api.js';
 
 const InventoryCalculationGuide = React.lazy(() => import('./InventoryCalculationGuide.jsx'));
 const SupplyPlanBoard = React.lazy(() => import('./SupplyPlanBoard.jsx'));
 const FullInventorySummaryPage = React.lazy(() => import('./FullInventorySummaryPage.jsx'));
 
-installStaticPreviewApi();
 installGlobalFetchProgress();
 
 const ACTIVE_PAGE_KEY = 'gendanjinduActivePage';
