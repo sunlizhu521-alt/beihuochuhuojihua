@@ -8270,14 +8270,14 @@ th {
   font-weight: 800;
 }
 
-.supply-plan-table .inventory-column {
+.supply-plan-table .supply-plan-data-column {
   min-width: 82px;
   background: #edf7ff;
   color: #205e9c;
   font-weight: 800;
 }
 
-.supply-plan-table thead .inventory-column {
+.supply-plan-table thead .supply-plan-data-column {
   background: #2874ba;
   color: #fff;
 }
@@ -8314,8 +8314,56 @@ th {
   background: #fff9f2;
 }
 
-.supply-plan-table tr.sku-group td {
-  border-top: 2px solid #75aee4;
+.supply-plan-table tr.supply-plan-parent-row td {
+  background: #f7fbff;
+}
+
+.supply-plan-table tr.supply-plan-parent-row.metric-row-0 td,
+.supply-plan-table tr.supply-plan-parent-row.metric-row-0 .supply-plan-sticky {
+  background: #e8f2ff;
+}
+
+.supply-plan-table tr.supply-plan-parent-row.metric-row-4 td,
+.supply-plan-table tr.supply-plan-parent-row.metric-row-4 .supply-plan-sticky {
+  background: #fff4e8;
+}
+
+.supply-plan-table tr.supply-plan-parent-row.supply-plan-group-start td {
+  border-top: 3px solid #337fc8;
+}
+
+.supply-plan-table tr.supply-plan-child-row.supply-plan-group-start td {
+  border-top: 1px dashed #9bb8d5;
+}
+
+.supply-plan-table tr.supply-plan-child-row .supply-plan-detail-column {
+  background: #f8fafc;
+}
+
+.supply-plan-model-toggle {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #205e9c;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.supply-plan-model-toggle strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.supply-plan-model-toggle small {
+  margin-left: auto;
+  color: #64748b;
+  font-size: .6rem;
+  font-weight: 700;
 }
 
 .supply-plan-table .gap-positive {

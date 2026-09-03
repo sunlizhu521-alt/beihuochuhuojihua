@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import {
   SUPPLY_PLAN_FILTER_FIELDS,
   SUPPLY_PLAN_PAGE_SIZE,
@@ -7,6 +7,7 @@ import {
   buildSupplyPlanFilterOptions,
   calculateSupplyPlanRow,
   filterSupplyPlanRows,
+  groupSupplyPlanRows,
   supplyPlanRowKey
 } from './supply-plan.js';
 
@@ -24,20 +25,24 @@ const PERIOD_FIELDS = [
   ['averageLeadTimeDays', '平均交期'],
   ['contractSigningDays', '合同签订']
 ];
-const FIXED_COLUMNS = [
+const SUMMARY_FIXED_COLUMNS = [
   { key: 'productLine', label: '产品线', width: 92 },
-  { key: 'businessUnit', label: '事业部', width: 116 },
   { key: 'productSeries', label: '系列', width: 92 },
-  { key: 'model', label: '型号', width: 92 },
-  { key: 'materialCode', label: '物料编码', width: 112 },
-  { key: 'sku', label: 'SKU', width: 130 },
-  { key: 'materialName', label: '名称', width: 210 },
+  { key: 'model', label: '型号', width: 142 },
   { key: 'safetyStockQty', label: '安全库存数量', width: 112 },
   { key: 'metric', label: '供应计划指标', width: 112 }
 ];
-const FIXED_LEFTS = FIXED_COLUMNS.map((_, index) => (
-  FIXED_COLUMNS.slice(0, index).reduce((sum, column) => sum + column.width, 0)
-));
+const CHILD_DETAIL_COLUMNS = [
+  { key: 'businessUnit', label: '事业部', width: 116 },
+  { key: 'materialCode', label: '物料编码', width: 112 },
+  { key: 'sku', label: 'SKU', width: 130 },
+  { key: 'materialName', label: '名称', width: 210 }
+];
+const EXPANDED_FIXED_COLUMNS = [
+  ...SUMMARY_FIXED_COLUMNS.slice(0, 3),
+  ...CHILD_DETAIL_COLUMNS,
+  ...SUMMARY_FIXED_COLUMNS.slice(3)
+];
 const EMPTY_FILTERS = Object.freeze({ businessUnit: '', productLine: '', productSeries: '' });
 
 function numberText(value, maximumFractionDigits = 2) {
@@ -80,10 +85,11 @@ async function apiRequest(path, token, options = {}) {
   return payload;
 }
 
-function stickyStyle(index) {
-  const width = FIXED_COLUMNS[index].width;
+function stickyStyle(columns, index) {
+  const width = columns[index].width;
+  const left = columns.slice(0, index).reduce((sum, column) => sum + column.width, 0);
   return {
-    '--supply-plan-left': `${FIXED_LEFTS[index]}px`,
+    '--supply-plan-left': `${left}px`,
     width,
     minWidth: width,
     maxWidth: width
@@ -91,11 +97,64 @@ function stickyStyle(index) {
 }
 
 function metricWeekValue(row, metric, weekIndex) {
-  if (metric === '销售预测' || metric === '出货数量') return row.weeklyForecast[weekIndex] || 0;
+  if (metric === '销售预测' || metric === '建议出货') return row.weeklyForecast?.[weekIndex] || 0;
   if (metric === '未交付量') return row.undeliveredQty;
   if (metric === '在途量') return row.inTransitQty;
   if (metric === '在库量') return row.onHandQty;
   return row.purchaseGap;
+}
+
+function metricDataValue(row, metric) {
+  if (metric === '销售预测' || metric === '建议出货') return row.forecastTotal;
+  if (metric === '未交付量') return row.undeliveredQty;
+  if (metric === '在途量') return row.inTransitQty;
+  if (metric === '在库量') return row.onHandQty;
+  return row.purchaseGap;
+}
+
+function SupplyPlanMetricRows({ row, rowKey, fixedColumns, level, expanded = false, childCount = 0, onToggle }) {
+  return SUPPLY_PLAN_ROW_TYPES.map((metric, metricIndex) => (
+    <tr
+      key={`${rowKey}-${metric}`}
+      className={`${metricIndex === 0 ? 'supply-plan-group-start ' : ''}${level === 'parent' ? 'supply-plan-parent-row' : 'supply-plan-child-row'} metric-row-${metricIndex}`}
+    >
+      {metricIndex === 0 ? fixedColumns.slice(0, -1).map((column, index) => {
+        let content = String(row[column.key] ?? '未匹配');
+        if (column.key === 'safetyStockQty') content = numberText(row.safetyStockQty);
+        if (level === 'parent' && column.key === 'businessUnit') content = '全量汇总';
+        if (level === 'parent' && column.key === 'materialCode') content = `${childCount} 项`;
+        if (level === 'parent' && column.key === 'sku') content = '—';
+        if (level === 'parent' && column.key === 'materialName') content = '按型号汇总';
+        return (
+          <td
+            key={column.key}
+            rowSpan={SUPPLY_PLAN_ROW_TYPES.length}
+            className={`supply-plan-sticky supply-plan-rowspan${CHILD_DETAIL_COLUMNS.some((detail) => detail.key === column.key) ? ' supply-plan-detail-column' : ''}`}
+            style={stickyStyle(fixedColumns, index)}
+            title={String(content)}
+          >
+            {level === 'parent' && column.key === 'model' ? (
+              <button type="button" className="supply-plan-model-toggle" aria-expanded={expanded} aria-label={`${expanded ? '收起' : '展开'}型号 ${row.model}`} onClick={onToggle}>
+                <span aria-hidden="true">{expanded ? '▾' : '▸'}</span>
+                <strong>{content}</strong>
+                <small>{childCount} 项</small>
+              </button>
+            ) : content}
+          </td>
+        );
+      }) : null}
+      <td className="supply-plan-sticky metric-name" style={stickyStyle(fixedColumns, fixedColumns.length - 1)}>{metric}</td>
+      <td className="numeric-cell supply-plan-data-column">{numberText(metricDataValue(row, metric))}</td>
+      {SUPPLY_PLAN_WEEKS.map((week, weekIndex) => {
+        const value = metricWeekValue(row, metric, weekIndex);
+        return (
+          <td key={week.key} className={`numeric-cell${metric === '建议采购' && value > 0 ? ' gap-positive' : ''}`}>
+            {numberText(value)}
+          </td>
+        );
+      })}
+    </tr>
+  ));
 }
 
 function RouteSettings({ params, saving, meta, onChange, onSave }) {
@@ -164,6 +223,7 @@ export default function SupplyPlanBoard({ token, active }) {
   const [message, setMessage] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [filters, setFilters] = useState(EMPTY_FILTERS);
+  const [expandedModels, setExpandedModels] = useState(() => new Set());
 
   async function loadSummary({ manual = false } = {}) {
     setLoading(true);
@@ -242,17 +302,29 @@ export default function SupplyPlanBoard({ token, active }) {
     () => filterSupplyPlanRows(calculatedRows, filters),
     [calculatedRows, filters]
   );
+  const modelGroups = useMemo(() => groupSupplyPlanRows(filteredRows), [filteredRows]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredRows.length / SUPPLY_PLAN_PAGE_SIZE));
-  const visibleRows = useMemo(() => {
+  const totalPages = Math.max(1, Math.ceil(modelGroups.length / SUPPLY_PLAN_PAGE_SIZE));
+  const visibleGroups = useMemo(() => {
     const safePage = Math.min(currentPage, totalPages);
     const start = (safePage - 1) * SUPPLY_PLAN_PAGE_SIZE;
-    return filteredRows.slice(start, start + SUPPLY_PLAN_PAGE_SIZE);
-  }, [filteredRows, currentPage, totalPages]);
+    return modelGroups.slice(start, start + SUPPLY_PLAN_PAGE_SIZE);
+  }, [modelGroups, currentPage, totalPages]);
+  const showChildColumns = visibleGroups.some((group) => expandedModels.has(group.key));
+  const fixedColumns = showChildColumns ? EXPANDED_FIXED_COLUMNS : SUMMARY_FIXED_COLUMNS;
 
   useEffect(() => {
     if (currentPage > totalPages) setCurrentPage(totalPages);
   }, [currentPage, totalPages]);
+
+  function toggleModel(groupKey) {
+    setExpandedModels((current) => {
+      const next = new Set(current);
+      if (next.has(groupKey)) next.delete(groupKey);
+      else next.add(groupKey);
+      return next;
+    });
+  }
 
   useEffect(() => {
     setFilters((current) => {
@@ -288,7 +360,7 @@ export default function SupplyPlanBoard({ token, active }) {
       {params ? <RouteSettings params={params} saving={saving} meta={meta} onChange={changeParam} onSave={saveParams} /> : null}
 
       <div className="toolbar supply-plan-toolbar">
-        <span className="section-count">当前显示 {filteredRows.length} / {calculatedRows.length} 个事业部＋物料编码</span>
+        <span className="section-count">全量跟单计划：当前显示 {modelGroups.length} 个产品型号，包含 {filteredRows.length} / {calculatedRows.length} 个事业部＋物料编码</span>
       </div>
 
       <div className="supply-plan-filter-bar" aria-label="供应计划筛选器">
@@ -326,45 +398,48 @@ export default function SupplyPlanBoard({ token, active }) {
         <table className="supply-plan-table">
           <thead>
             <tr>
-              {FIXED_COLUMNS.map((column, index) => (
-                <th key={column.key} className="supply-plan-sticky" style={stickyStyle(index)}>{column.label}</th>
+              {fixedColumns.map((column, index) => (
+                <th key={column.key} className={`supply-plan-sticky${CHILD_DETAIL_COLUMNS.some((detail) => detail.key === column.key) ? ' supply-plan-detail-column' : ''}`} style={stickyStyle(fixedColumns, index)}>{column.label}</th>
               ))}
-              <th className="inventory-column">库存数据</th>
+              <th className="supply-plan-data-column">数据</th>
               {SUPPLY_PLAN_WEEKS.map((week) => (
                 <th key={week.key} className="week-column"><strong>{week.label}</strong><small>{week.dateRange}</small></th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {visibleRows.flatMap((row) => {
-              const rowKey = supplyPlanRowKey(row);
-              return SUPPLY_PLAN_ROW_TYPES.map((metric, metricIndex) => (
-                <tr key={`${rowKey}-${metric}`} className={`${metricIndex === 0 ? 'sku-group ' : ''}metric-row-${metricIndex}`}>
-                  {metricIndex === 0 ? FIXED_COLUMNS.slice(0, 8).map((column, index) => (
-                    <td key={column.key} rowSpan={SUPPLY_PLAN_ROW_TYPES.length} className="supply-plan-sticky supply-plan-rowspan" style={stickyStyle(index)} title={String(row[column.key] ?? '')}>
-                      {column.key === 'safetyStockQty' ? numberText(row.safetyStockQty) : String(row[column.key] ?? '未匹配')}
-                    </td>
+            {visibleGroups.map((group) => {
+              const expanded = expandedModels.has(group.key);
+              return (
+                <Fragment key={group.key}>
+                  <SupplyPlanMetricRows
+                    row={group}
+                    rowKey={`parent-${group.key}`}
+                    fixedColumns={fixedColumns}
+                    level="parent"
+                    expanded={expanded}
+                    childCount={group.children.length}
+                    onToggle={() => toggleModel(group.key)}
+                  />
+                  {expanded ? group.children.map((child) => (
+                    <SupplyPlanMetricRows
+                      key={supplyPlanRowKey(child)}
+                      row={child}
+                      rowKey={`child-${group.key}-${supplyPlanRowKey(child)}`}
+                      fixedColumns={fixedColumns}
+                      level="child"
+                    />
                   )) : null}
-                  <td className="supply-plan-sticky metric-name" style={stickyStyle(8)}>{metric}</td>
-                  <td className="numeric-cell inventory-column">{numberText(row.inventoryQty)}</td>
-                  {SUPPLY_PLAN_WEEKS.map((week, weekIndex) => {
-                    const value = metricWeekValue(row, metric, weekIndex);
-                    return (
-                      <td key={week.key} className={`numeric-cell${metric === '采购数量' && value > 0 ? ' gap-positive' : ''}`}>
-                        {numberText(value)}
-                      </td>
-                    );
-                  })}
-                </tr>
-              ));
+                </Fragment>
+              );
             })}
-            {!visibleRows.length ? <tr><td className="empty-cell" colSpan={FIXED_COLUMNS.length + 1 + SUPPLY_PLAN_WEEKS.length}>暂无可展示的供应计划数据</td></tr> : null}
+            {!visibleGroups.length ? <tr><td className="empty-cell" colSpan={fixedColumns.length + 1 + SUPPLY_PLAN_WEEKS.length}>暂无可展示的供应计划数据</td></tr> : null}
           </tbody>
         </table>
       </div>
 
       <div className="supply-plan-pagination">
-        <span>每页 {SUPPLY_PLAN_PAGE_SIZE} 个SKU，第 {Math.min(currentPage, totalPages)} / {totalPages} 页</span>
+        <span>每页 {SUPPLY_PLAN_PAGE_SIZE} 个产品型号，第 {Math.min(currentPage, totalPages)} / {totalPages} 页</span>
         <div>
           <button type="button" className="ghost" disabled={currentPage <= 1} onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}>上一页</button>
           <button type="button" className="ghost" disabled={currentPage >= totalPages} onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}>下一页</button>

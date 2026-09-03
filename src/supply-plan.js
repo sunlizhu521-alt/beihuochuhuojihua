@@ -4,8 +4,8 @@ export const SUPPLY_PLAN_ROW_TYPES = Object.freeze([
   '未交付量',
   '在途量',
   '在库量',
-  '采购数量',
-  '出货数量'
+  '建议采购',
+  '建议出货'
 ]);
 
 function dateLabel(date) {
@@ -58,6 +58,70 @@ export function normalizeSupplyPlanImportKey(value, keyType = 'sku') {
 
 export function supplyPlanRowKey(row) {
   return `${text(row?.businessUnit)}\u001f${normalizeSupplyPlanImportKey(row?.materialCode, 'materialCode')}`;
+}
+
+export function supplyPlanModelKey(row) {
+  const productLine = text(row?.productLine) || '未匹配产品线';
+  const productSeries = text(row?.productSeries) || '未匹配系列';
+  const model = text(row?.model);
+  const fallback = text(row?.sku) || normalizeSupplyPlanImportKey(row?.materialCode, 'materialCode') || '未匹配型号';
+  return `${productLine}\u001f${productSeries}\u001f${model || fallback}`;
+}
+
+const SUPPLY_PLAN_SUM_FIELDS = Object.freeze([
+  'onHandQty',
+  'inTransitQty',
+  'undeliveredQty',
+  'inventoryQty',
+  'forecastTotal',
+  'dailyForecast',
+  'safetyStockQty',
+  'purchaseGap'
+]);
+
+export function groupSupplyPlanRows(rows = [], weekCount = SUPPLY_PLAN_WEEKS.length) {
+  const groups = new Map();
+  rows.forEach((row) => {
+    const key = supplyPlanModelKey(row);
+    const group = groups.get(key) || {
+      key,
+      productLine: text(row?.productLine) || '未匹配产品线',
+      productSeries: text(row?.productSeries) || '未匹配系列',
+      model: text(row?.model) || '未匹配型号',
+      businessUnit: '全量汇总',
+      materialCode: '',
+      sku: '',
+      materialName: '按型号汇总',
+      weeklyForecast: Array.from({ length: weekCount }, () => 0),
+      children: []
+    };
+    SUPPLY_PLAN_SUM_FIELDS.forEach((field) => {
+      group[field] = numberValue(group[field]) + numberValue(row?.[field]);
+    });
+    group.weeklyForecast = group.weeklyForecast.map((value, index) => (
+      value + numberValue(row?.weeklyForecast?.[index])
+    ));
+    group.children.push(row);
+    groups.set(key, group);
+  });
+
+  return [...groups.values()]
+    .map((group) => ({
+      ...group,
+      children: [...group.children].sort((left, right) => (
+        text(left.businessUnit).localeCompare(text(right.businessUnit), 'zh-CN')
+        || normalizeSupplyPlanImportKey(left.materialCode, 'materialCode').localeCompare(
+          normalizeSupplyPlanImportKey(right.materialCode, 'materialCode'),
+          'zh-CN',
+          { numeric: true }
+        )
+      ))
+    }))
+    .sort((left, right) => (
+      left.productLine.localeCompare(right.productLine, 'zh-CN')
+      || left.productSeries.localeCompare(right.productSeries, 'zh-CN')
+      || left.model.localeCompare(right.model, 'zh-CN', { numeric: true })
+    ));
 }
 
 export function matchesSupplyPlanFilters(row, filters = {}, omit = '') {

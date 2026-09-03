@@ -6,7 +6,9 @@ import {
   buildSupplyPlanWeeks,
   calculateSupplyPlanRow,
   filterSupplyPlanRows,
+  groupSupplyPlanRows,
   parseSupplyPlanWorksheet,
+  SUPPLY_PLAN_ROW_TYPES,
   supplyPlanRowKey
 } from './supply-plan.js';
 
@@ -109,4 +111,55 @@ test('供应计划筛选选项按其他已选条件联动', () => {
   assert.deepEqual(options.businessUnit, ['国内事业部', '海外事业部']);
   assert.deepEqual(options.productLine, ['护理床', '轮椅']);
   assert.deepEqual(options.productSeries, ['A系列']);
+});
+
+test('供应计划固定使用六个指标并采用建议采购和建议出货口径', () => {
+  assert.deepEqual(SUPPLY_PLAN_ROW_TYPES, [
+    '销售预测', '未交付量', '在途量', '在库量', '建议采购', '建议出货'
+  ]);
+});
+
+test('供应计划按产品型号生成父项并汇总事业部物料子项', () => {
+  const sourceRows = [
+    {
+      productLine: '护理床', productSeries: '星云系列', model: 'A1', businessUnit: '海外事业部',
+      materialCode: '1002', sku: 'SKU-A-US', materialName: 'A1海外版', onHandQty: 10,
+      inTransitQty: 3, undeliveredQty: 4, inventoryQty: 13, safetyStockQty: 20,
+      purchaseGap: 11, forecastTotal: 21, dailyForecast: 1, weeklyForecast: [7, 14]
+    },
+    {
+      productLine: '护理床', productSeries: '星云系列', model: 'A1', businessUnit: '国内事业部',
+      materialCode: '1001', sku: 'SKU-A-CN', materialName: 'A1国内版', onHandQty: 5,
+      inTransitQty: 2, undeliveredQty: 6, inventoryQty: 7, safetyStockQty: 8,
+      purchaseGap: 9, forecastTotal: 7, dailyForecast: 1, weeklyForecast: [3, 4]
+    },
+    {
+      productLine: '护理床', productSeries: '星云系列', model: 'A2', businessUnit: '国内事业部',
+      materialCode: '2001', sku: 'SKU-B', materialName: 'A2', onHandQty: 1,
+      inTransitQty: 0, undeliveredQty: 0, inventoryQty: 1, safetyStockQty: 2,
+      purchaseGap: 1, forecastTotal: 2, dailyForecast: 0, weeklyForecast: [1, 1]
+    }
+  ];
+  const groups = groupSupplyPlanRows(sourceRows, 2);
+  assert.equal(groups.length, 2);
+  assert.equal(groups[0].model, 'A1');
+  assert.equal(groups[0].children.length, 2);
+  assert.deepEqual(groups[0].children.map((row) => row.materialCode), ['1001', '1002']);
+  assert.equal(groups[0].onHandQty, 15);
+  assert.equal(groups[0].inTransitQty, 5);
+  assert.equal(groups[0].undeliveredQty, 10);
+  assert.equal(groups[0].inventoryQty, 20);
+  assert.equal(groups[0].safetyStockQty, 28);
+  assert.equal(groups[0].purchaseGap, 20);
+  assert.equal(groups[0].forecastTotal, 28);
+  assert.deepEqual(groups[0].weeklyForecast, [10, 18]);
+});
+
+test('缺失型号时按SKU或物料编码隔离父项避免错误合并', () => {
+  const groups = groupSupplyPlanRows([
+    { productLine: '轮椅', productSeries: '基础系列', model: '', sku: 'SKU-1', materialCode: '1' },
+    { productLine: '轮椅', productSeries: '基础系列', model: '', sku: 'SKU-2', materialCode: '2' }
+  ]);
+  assert.equal(groups.length, 2);
+  assert.ok(groups.every((group) => group.model === '未匹配型号'));
 });
