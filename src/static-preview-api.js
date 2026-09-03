@@ -1,10 +1,6 @@
 const PREVIEW_PAGES = {
   inventorySummary: '库存汇总',
-  inventoryRisk: '供应计划分析',
   supplyPlanBoard: '供应计划工具',
-  beiHuoGongJu: '备货工具',
-  beiHuoReviewLibrary: '备货文件导入',
-  inventoryPurchase: '采购未交付',
   fullInventorySummary: '全量库存汇总',
   fullInventoryLibrary: '全量库存底表',
   inventorySummaryLibrary: '底表文件',

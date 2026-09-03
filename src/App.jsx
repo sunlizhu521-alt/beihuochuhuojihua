@@ -5,9 +5,7 @@ import { getLoadingProgress, installGlobalFetchProgress, subscribeLoadingProgres
 import { installStaticPreviewApi } from './static-preview-api.js';
 
 const InventoryCalculationGuide = React.lazy(() => import('./InventoryCalculationGuide.jsx'));
-const InventoryRiskPage = React.lazy(() => import('./InventoryRiskPage.jsx'));
 const SupplyPlanBoard = React.lazy(() => import('./SupplyPlanBoard.jsx'));
-const BeiHuoGongJuPage = React.lazy(() => import('./BeiHuoGongJuPage.jsx'));
 const FullInventorySummaryPage = React.lazy(() => import('./FullInventorySummaryPage.jsx'));
 
 installStaticPreviewApi();
@@ -17,29 +15,21 @@ const API = import.meta.env.DEV ? 'http://localhost:4003' : '';
 const ACTIVE_PAGE_KEY = 'gendanjinduActivePage';
 
 const PAGE_ORDER = [
-  'inventoryRisk',
   'supplyPlanBoard',
-  'beiHuoGongJu',
-  'beiHuoReviewLibrary',
-  'inventoryPurchase',
   'fullInventorySummary',
   'inventorySummaryLibrary',
   'dimensionLibrary'
 ];
 
 const PAGE_LABELS = {
-  inventoryRisk: '供应计划分析',
   supplyPlanBoard: '供应计划工具',
-  beiHuoGongJu: '备货工具',
-  beiHuoReviewLibrary: '备货文件导入',
-  inventoryPurchase: '采购未交付',
   fullInventorySummary: '全量库存汇总',
   inventorySummaryLibrary: '底表文件',
   dimensionLibrary: '维度表库'
 };
 
 const NAV_GROUPS = [
-  { title: '备货计划', pages: ['supplyPlanBoard', 'inventoryRisk', 'beiHuoGongJu', 'beiHuoReviewLibrary', 'inventoryPurchase'] },
+  { title: '备货计划', pages: ['supplyPlanBoard'] },
   { title: '全量库存', pages: ['fullInventorySummary'] },
   { title: '库存数据', pages: ['inventorySummaryLibrary'] },
   { title: '维护数据', pages: ['dimensionLibrary'] }
@@ -63,7 +53,7 @@ function resolveActivePage(user, currentPage = '') {
   if (visiblePages.includes(currentPage)) return currentPage;
   const savedPage = storedActivePage();
   if (visiblePages.includes(savedPage)) return savedPage;
-  return visiblePages[0] || 'domesticBoard';
+  return visiblePages[0] || '';
 }
 
 const DIMENSION_SLOTS = [
@@ -165,13 +155,6 @@ const INVENTORY_SUMMARY_LIBRARY_SLOTS = [
   { id: 'inventorySummaryFile21', title: '备用', fields: [] }
 ];
 
-
-const BEI_HUO_REVIEW_LIBRARY_SLOTS = [
-  { id: 'beiHuoReviewFile1', title: '国内事业部备货', fields: [] },
-  { id: 'beiHuoReviewFile2', title: '备用', fields: [] },
-  { id: 'beiHuoReviewFile3', title: '备用', fields: [] },
-  { id: 'beiHuoReviewFile4', title: '备用', fields: [] }
-];
 
 function normalize(value) {
   return String(value ?? '').trim();
@@ -607,41 +590,6 @@ function InventoryStructureChart({ domestic, crossBorder }) {
   );
 }
 
-function inventoryPurchaseGroups(rows, keyOf) {
-  const groups = new Map();
-  rows.forEach((row) => {
-    const name = normalize(keyOf(row)) || '未匹配';
-    const target = groups.get(name) || {
-      id: name,
-      name,
-      rowCount: 0,
-      remainingQty: 0,
-      orderQty: 0,
-      inboundQty: 0,
-      unpreparedQty: 0,
-      preparedNotStartedQty: 0,
-      inProductionQty: 0,
-      finishedQty: 0,
-      pendingQty: 0
-    };
-    const remainingQty = numberValue(row.remainingInboundQty);
-    target.rowCount += 1;
-    target.remainingQty += remainingQty;
-    target.orderQty += numberValue(row.currentOrderQty);
-    target.inboundQty += numberValue(row.trackingInboundQty);
-    target.unpreparedQty += numberValue(row.unpreparedQty);
-    target.preparedNotStartedQty += numberValue(row.preparedNotStartedQty);
-    target.inProductionQty += numberValue(row.inProductionQty);
-    target.finishedQty += numberValue(row.finishedQty);
-    target.pendingQty += Math.max(remainingQty - numberValue(row.inProductionQty) - numberValue(row.finishedQty), 0);
-    groups.set(name, target);
-  });
-  return [...groups.values()].sort((left, right) => (
-    right.remainingQty - left.remainingQty
-    || left.name.localeCompare(right.name, 'zh-Hans-CN')
-  ));
-}
-
 function InventoryMetricToggle({ metric, onChange, label, valueLabel = '货值' }) {
   return (
     <div className="inventory-metric-toggle" role="group" aria-label={`${label}指标切换`}>
@@ -805,205 +753,6 @@ function InventoryPurchaseMetric({ label, quantity, value, note, share, tone, fu
       )}
       <small>{share === null ? note : `${note} · 占比 ${formatDashboardPercent(share)}`}</small>
     </article>
-  );
-}
-
-function InventoryPurchaseDashboard({ rows, loading }) {
-  const [filters, setFilters] = useState({
-    businessUnits: [],
-    productLines: [],
-    productSeries: [],
-    purchaseOwners: [],
-    suppliers: [],
-    keyword: ''
-  });
-  const [searchInput, setSearchInput] = useState('');
-  const [currentPage, setCurrentPage] = useState(1);
-  const [exporting, setExporting] = useState(false);
-  const [pageSize, setPageSize] = useState(10);
-  const sourceRows = useMemo(() => rows.filter((row) => numberValue(row.remainingInboundQty) > 0), [rows]);
-  const unique = (values) => [...new Set(values.map(normalize).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'));
-  const options = useMemo(() => ({
-    businessUnits: unique(sourceRows.map((row) => row.businessUnit)),
-    productLines: unique(sourceRows.map((row) => row.productLine)),
-    productSeries: unique(sourceRows.map((row) => row.productSeries)),
-    purchaseOwners: unique(sourceRows.map((row) => row.purchaseOwner)),
-    suppliers: uniqueSupplierShortNames(sourceRows.map((row) => row.orderSupplierShortName || row.supplierShortName || row.supplier || '未匹配'))
-  }), [sourceRows]);
-  const filteredRows = useMemo(() => {
-    const keyword = normalize(filters.keyword).toLowerCase();
-    const selected = (values, value) => values.length === 0 || values.includes(normalize(value));
-    return sourceRows.filter((row) => (
-      selected(filters.businessUnits, row.businessUnit)
-      && selected(filters.productLines, row.productLine)
-      && selected(filters.productSeries, row.productSeries)
-      && selected(filters.purchaseOwners, row.purchaseOwner)
-      && selected(filters.suppliers, row.orderSupplierShortName || row.supplierShortName || row.supplier)
-      && (!keyword || [
-        row.materialCode, row.sku, row.materialName, row.orderNo, row.supplier,
-        row.orderSupplierShortName, row.supplierShortName, row.operatorName,
-        row.unfulfilledReason, row.reasonDetail, row.remark
-      ].join(' ').toLowerCase().includes(keyword))
-    ));
-  }, [sourceRows, filters]);
-  const totals = useMemo(() => filteredRows.reduce((summary, row) => {
-    const remainingQty = numberValue(row.remainingInboundQty);
-    summary.orderQty += numberValue(row.currentOrderQty);
-    summary.inboundQty += numberValue(row.trackingInboundQty);
-    summary.remainingQty += remainingQty;
-    summary.unpreparedQty += numberValue(row.unpreparedQty);
-    summary.preparedNotStartedQty += numberValue(row.preparedNotStartedQty);
-    summary.inProductionQty += numberValue(row.inProductionQty);
-    summary.finishedQty += numberValue(row.finishedQty);
-    summary.pendingQty += Math.max(remainingQty - numberValue(row.inProductionQty) - numberValue(row.finishedQty), 0);
-    return summary;
-  }, {
-    orderQty: 0,
-    inboundQty: 0,
-    remainingQty: 0,
-    unpreparedQty: 0,
-    preparedNotStartedQty: 0,
-    inProductionQty: 0,
-    finishedQty: 0,
-    pendingQty: 0
-  }), [filteredRows]);
-  const monthRows = useMemo(() => inventoryPurchaseGroups(filteredRows, (row) => row.month), [filteredRows]);
-  const supplierRows = useMemo(() => inventoryPurchaseGroups(filteredRows, (row) => row.orderSupplierShortName || row.supplierShortName || row.supplier), [filteredRows]);
-  const productLineRows = useMemo(() => inventoryPurchaseGroups(filteredRows, (row) => row.productLine), [filteredRows]);
-  const businessUnitRows = useMemo(() => inventoryPurchaseGroups(filteredRows, (row) => row.businessUnit), [filteredRows]);
-  const reasonSourceRows = useMemo(() => filteredRows.filter((row) => normalize(row.unfulfilledReason)), [filteredRows]);
-  const reasonRows = useMemo(() => inventoryPurchaseGroups(reasonSourceRows, (row) => row.unfulfilledReason), [reasonSourceRows]);
-  const reasonDetailRows = useMemo(
-    () => inventoryPurchaseGroups(filteredRows.filter((row) => normalize(row.reasonDetail)), (row) => row.reasonDetail),
-    [filteredRows]
-  );
-  const remarkRows = useMemo(
-    () => inventoryPurchaseGroups(filteredRows.filter((row) => normalize(row.remark)), (row) => row.remark),
-    [filteredRows]
-  );
-  const reasonQty = reasonRows.reduce((sum, row) => sum + numberValue(row.remainingQty), 0);
-  const shareOfRemaining = (value) => totals.remainingQty ? numberValue(value) / totals.remainingQty * 100 : 0;
-  const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize));
-  const pageRows = filteredRows.slice((currentPage - 1) * pageSize, currentPage * pageSize);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      setFilters((current) => ({ ...current, keyword: searchInput }));
-    }, 300);
-    return () => window.clearTimeout(timer);
-  }, [searchInput]);
-  useEffect(() => { setCurrentPage(1); }, [filters, pageSize]);
-  useEffect(() => {
-    if (currentPage > totalPages) setCurrentPage(totalPages);
-  }, [currentPage, totalPages]);
-
-  const updateFilter = (key, value) => setFilters((current) => ({ ...current, [key]: value }));
-  const clearFilters = () => {
-    setSearchInput('');
-    setFilters({
-      businessUnits: [],
-      productLines: [],
-      productSeries: [],
-      purchaseOwners: [],
-      suppliers: [],
-      keyword: ''
-    });
-  };
-  const columns = ['下单月份', '事业部', '运营', '采购订单号', '供应商', '供应商简称', 'SKU', '物料名称', '下单数量', '已入库量', '未交付数量', '生产中', '完工未发'];
-  const renderRow = (row) => [
-    row.month || '未填写',
-    row.businessUnit || '未匹配',
-    row.operatorName || '未填写',
-    row.orderNo || '未填写',
-    row.supplier || '未填写',
-    row.orderSupplierShortName || row.supplierShortName || '未匹配',
-    row.sku || '未匹配',
-    row.materialName || '未匹配',
-    formatQuantity(row.currentOrderQty),
-    formatQuantity(row.trackingInboundQty),
-    formatQuantity(row.remainingInboundQty),
-    formatQuantity(row.inProductionQty),
-    formatQuantity(row.finishedQty)
-  ];
-
-  async function exportRows() {
-    if (!filteredRows.length) return;
-    setExporting(true);
-    try {
-      const XLSX = await import('xlsx');
-      const workbook = XLSX.utils.book_new();
-      const worksheet = XLSX.utils.aoa_to_sheet([columns, ...filteredRows.map(renderRow)]);
-      XLSX.utils.book_append_sheet(workbook, worksheet, '采购未交付');
-      await writeStyledExcelFile(XLSX, workbook, `采购未交付_${todayText()}.xlsx`);
-    } finally {
-      setExporting(false);
-    }
-  }
-
-  if (loading && rows.length === 0) return <div className="inventory-summary-status" role="status">采购订单数据加载中</div>;
-  return (
-    <div className="inventory-purchase-dashboard">
-      <div className="toolbar filters-row inventory-summary-filters inventory-purchase-filters">
-        <MultiSelectFilter label="事业部" allLabel="全部事业部" value={filters.businessUnits} options={options.businessUnits} onChange={(value) => updateFilter('businessUnits', value)} />
-        <MultiSelectFilter label="产品线" allLabel="全部产品线" value={filters.productLines} options={options.productLines} onChange={(value) => updateFilter('productLines', value)} />
-        <MultiSelectFilter label="系列" allLabel="全部系列" value={filters.productSeries} options={options.productSeries} onChange={(value) => updateFilter('productSeries', value)} />
-        <MultiSelectFilter label="采购下单人" allLabel="全部采购下单人" value={filters.purchaseOwners} options={options.purchaseOwners} onChange={(value) => updateFilter('purchaseOwners', value)} />
-        <MultiSelectFilter label="供应商简称" allLabel="全部供应商简称" value={filters.suppliers} options={options.suppliers} onChange={(value) => updateFilter('suppliers', value)} />
-        <input className="search-input" placeholder="搜索订单号、物料、SKU、供应商" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} />
-        <button type="button" className="ghost compact-button" onClick={clearFilters}>清空筛选</button>
-      </div>
-      <section className="inventory-kpi-grid inventory-purchase-kpis" aria-label="采购未交付指标">
-        <InventoryPurchaseMetric label="未交付" quantity={totals.remainingQty} value={null} note={`${filteredRows.length} 条订单记录`} share={totals.remainingQty ? 100 : 0} tone="materials" />
-        <InventoryPurchaseMetric label="存在未履约原因" quantity={reasonQty} value={null} note={`${reasonSourceRows.length} 条已填写原因`} share={shareOfRemaining(reasonQty)} tone="total" />
-        <InventoryPurchaseMetric label="已生产未发货" quantity={totals.finishedQty} value={null} note="占未交付" share={shareOfRemaining(totals.finishedQty)} tone="transit" />
-        <InventoryPurchaseMetric label="已下单未备料未生产" quantity={totals.unpreparedQty} value={null} note="占未交付" share={shareOfRemaining(totals.unpreparedQty)} tone="domestic" />
-        <InventoryPurchaseMetric label="已备料未生产" quantity={totals.preparedNotStartedQty} value={null} note="占未交付" share={shareOfRemaining(totals.preparedNotStartedQty)} tone="cross-border" />
-        <InventoryPurchaseMetric label="生产中产品" quantity={totals.inProductionQty} value={null} note="占未交付" share={shareOfRemaining(totals.inProductionQty)} tone="production" />
-      </section>
-      <section className="inventory-purchase-chart-grid">
-        <InventoryMonthChart rows={monthRows} />
-        <InventoryStageChart totals={totals} />
-        <InventoryRankChart title="供应商未交付排名" rows={supplierRows} />
-        <InventoryRankChart title="产品线未交付分布" rows={productLineRows} note="全部产品线" />
-        <InventoryRankChart title="事业部未交付分布" rows={businessUnitRows} note="全部事业部" />
-        <InventoryPieChart title="未履约原因分布" rows={reasonRows} pendingText="未履约原因字段待接入" />
-        <InventoryPieChart title="原因详情排名" rows={reasonDetailRows} pendingText="原因详情字段待接入" wide />
-        <InventoryPieChart title="备注分布" rows={remarkRows} pendingText="暂无备注数据" wide />
-      </section>
-      <div className="inventory-table-tabs inventory-purchase-table-head">
-        <div role="tablist" aria-label="采购未交付明细"><button type="button" role="tab" aria-selected="true" className="active">采购未交付订单明细</button></div>
-        <div className="inventory-table-actions">
-          <span>当前筛选 {filteredRows.length} / {sourceRows.length} 条</span>
-          <button type="button" className="ghost compact-button" disabled={exporting || !filteredRows.length} onClick={exportRows}>{exporting ? '导出中...' : '导出Excel'}</button>
-          <label className="inventory-page-size">每页
-            <select value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))}>
-              <option value="10">10 条</option>
-              <option value="25">25 条</option>
-              <option value="50">50 条</option>
-            </select>
-          </label>
-        </div>
-      </div>
-      <DataTable className="inventory-summary-table inventory-purchase-table" rows={pageRows} columns={columns} render={renderRow} />
-      {filteredRows.length > pageSize && (
-        <TablePagination label="采购未交付分页" currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} pageSize={pageSize} />
-      )}
-    </div>
-  );
-}
-
-function InventoryPurchasePage({ rows, loading }) {
-  return (
-    <section className="inventory-dashboard">
-      <div className="inventory-dashboard-heading">
-        <div>
-          <h2>采购未交付</h2>
-          <p>采购未交付订单、生产进度与供应商分布</p>
-        </div>
-        <span>全部有效采购订单</span>
-      </div>
-      <InventoryPurchaseDashboard rows={rows} loading={loading} />
-    </section>
   );
 }
 
@@ -2500,277 +2249,6 @@ function InventorySummary({ token, active }) {
           {filteredRows.length > pageSize && (
             <TablePagination label="库存汇总分页" currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} pageSize={pageSize} />
           )}
-        </>
-      )}
-    </section>
-  );
-}
-
-function InventoryPurchaseDistribution({ title, rows }) {
-  const [metric, setMetric] = useState('qty');
-  const valueKey = metric === 'qty' ? 'qty' : 'value';
-  const sourceRows = rows.filter((row) => numberValue(row[valueKey]) !== 0)
-    .sort((left, right) => Math.abs(right[valueKey]) - Math.abs(left[valueKey]));
-  const total = sourceRows.reduce((sum, row) => sum + numberValue(row[valueKey]), 0);
-  const palette = ['#0f8f88', '#1683e8', '#f59e0b', '#7c3aed', '#ef5b45', '#22a35a', '#0ea5e9', '#64748b'];
-  let offset = 0;
-  const gradient = total ? sourceRows.map((row, index) => {
-    const start = offset;
-    offset += numberValue(row[valueKey]) / total * 100;
-    return `${palette[index % palette.length]} ${start}% ${offset}%`;
-  }).join(', ') : '#e2e8f0 0 100%';
-  return (
-    <article className="inventory-chart-panel inventory-purchase-chart">
-      <div className="inventory-chart-head">
-        <h3>{title}</h3>
-        <InventoryMetricToggle metric={metric} onChange={setMetric} label={title} />
-      </div>
-      {!total ? <p className="empty-chart">暂无数据</p> : (
-        <div className="inventory-pie-layout">
-          <div className="inventory-pie" style={{ background: `conic-gradient(${gradient})` }}>
-            <div>
-              <span>{metric === 'qty' ? '数量' : '货值'}</span>
-              <strong>{metric === 'qty' ? formatDashboardNumber(total) : formatDashboardWan(total)}</strong>
-            </div>
-          </div>
-          <div className="inventory-pie-legend inventory-full-legend">
-            {sourceRows.map((row, index) => (
-              <div key={row.name}>
-                <span title={row.name}><i style={{ background: palette[index % palette.length] }} />{row.name}</span>
-                <strong>{metric === 'qty' ? formatDashboardNumber(row.qty) : formatDashboardWan(row.value)}</strong>
-                <small>{total ? `${(numberValue(row[valueKey]) / total * 100).toFixed(1)}%` : '0.0%'}</small>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </article>
-  );
-}
-
-function InventoryPurchaseStageBars({ totals }) {
-  const [metric, setMetric] = useState('qty');
-  const stages = [
-    ['已生产未发货', totals.finishedNotShippedQty, totals.finishedNotShippedValue, '#1683e8'],
-    ['已下单未备料未生产', totals.unpreparedQty, totals.unpreparedValue, '#ef5b45'],
-    ['已备料未生产', totals.preparedNotStartedQty, totals.preparedNotStartedValue, '#f59e0b'],
-    ['生产中产品', totals.inProductionQty, totals.inProductionValue, '#0f8f88']
-  ];
-  const valueIndex = metric === 'qty' ? 1 : 2;
-  const max = Math.max(...stages.map((row) => Math.abs(numberValue(row[valueIndex]))), 1);
-  return (
-    <article className="inventory-chart-panel inventory-purchase-chart">
-      <div className="inventory-chart-head">
-        <h3>生产进度构成</h3>
-        <InventoryMetricToggle metric={metric} onChange={setMetric} label="生产进度构成" />
-      </div>
-      <div className="inventory-stage-list">
-        {stages.map(([name, qty, value, color]) => {
-          const amount = metric === 'qty' ? qty : value;
-          return (
-            <div className="inventory-stage-row" key={name}>
-              <span>{name}</span>
-              <div><i style={{ width: `${Math.max(Math.abs(amount) / max * 100, amount ? 2 : 0)}%`, background: color }} /></div>
-              <strong>{metric === 'qty' ? formatDashboardNumber(amount) : formatDashboardWan(amount)}</strong>
-            </div>
-          );
-        })}
-      </div>
-    </article>
-  );
-}
-
-function InventoryPurchaseRanking({ title, rows }) {
-  const [metric, setMetric] = useState('qty');
-  const valueKey = metric === 'qty' ? 'unfulfilledQty' : 'unfulfilledValue';
-  const max = Math.max(...rows.map((row) => Math.abs(numberValue(row[valueKey]))), 1);
-  return (
-    <article className="inventory-chart-panel inventory-purchase-chart">
-      <div className="inventory-chart-head">
-        <h3>{title}</h3>
-        <InventoryMetricToggle metric={metric} onChange={setMetric} label={title} />
-      </div>
-      <div className="inventory-rank-list inventory-full-rank-list">
-        {rows.length === 0 ? <p className="empty-chart">暂无数据</p> : rows.map((row) => (
-          <div className="inventory-rank-row" key={row.id}>
-            <span title={row.name}>{row.name}</span>
-            <div className="inventory-rank-track"><i style={{ width: `${Math.max(Math.abs(row[valueKey]) / max * 100, row[valueKey] ? 2 : 0)}%` }} /></div>
-            <strong>{metric === 'qty' ? formatDashboardNumber(row[valueKey]) : formatDashboardWan(row[valueKey])}</strong>
-          </div>
-        ))}
-      </div>
-    </article>
-  );
-}
-
-function InventoryPurchaseFilePage({ token, active }) {
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [filters, setFilters] = useState({ businessUnits: [], productLines: [], productSeries: [], deliveryStatuses: [], keyword: '' });
-  const [searchInput, setSearchInput] = useState('');
-  const [pageSize, setPageSize] = useState(10);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [exporting, setExporting] = useState(false);
-
-  useEffect(() => {
-    if (!active) return undefined;
-    let cancelled = false;
-    setLoading(true);
-    setError('');
-    request('/api/inventory-purchase-summary', { token })
-      .then((payload) => {
-        if (!cancelled) setData(payload);
-      })
-      .catch((err) => {
-        if (!cancelled) setError(err.message || '采购未交付加载失败');
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [active, token]);
-  useEffect(() => {
-    const timer = window.setTimeout(() => setFilters((current) => ({ ...current, keyword: searchInput })), 300);
-    return () => window.clearTimeout(timer);
-  }, [searchInput]);
-
-  const rows = data?.rows || [];
-  const selected = (values, value) => values.length === 0 || values.includes(normalize(value));
-  const filteredRows = useMemo(() => {
-    const keyword = normalize(filters.keyword).toLowerCase();
-    return rows.filter((row) => (
-      selected(filters.businessUnits, row.businessUnit)
-      && selected(filters.productLines, row.productLine)
-      && selected(filters.productSeries, row.productSeries)
-      && (filters.deliveryStatuses.length === 0 || (row.deliveryStatuses || [row.deliveryStatus]).some((value) => filters.deliveryStatuses.includes(value)))
-      && (!keyword || [row.matchKey, row.materialCode, row.sku, row.materialName, row.rawIdentifier].join(' ').toLowerCase().includes(keyword))
-    ));
-  }, [rows, filters]);
-  const unique = (values) => [...new Set(values.flat().map(normalize).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'));
-  const options = useMemo(() => ({
-    businessUnits: unique(rows.map((row) => row.businessUnit)),
-    productLines: unique(rows.map((row) => row.productLine)),
-    productSeries: unique(rows.map((row) => row.productSeries)),
-    deliveryStatuses: unique(rows.map((row) => row.deliveryStatuses || [row.deliveryStatus]))
-  }), [rows]);
-  const totals = useMemo(() => inventoryDashboardTotals(filteredRows), [filteredRows]);
-  const fullTotals = useMemo(() => inventoryDashboardTotals(rows), [rows]);
-  const productLineRows = useMemo(() => inventoryDashboardGroups(filteredRows, (row) => row.productLine), [filteredRows]);
-  const monthRows = useMemo(() => {
-    const months = [...new Set(filteredRows.flatMap((row) => Object.keys(row.purchaseByMonth || {})))].sort();
-    return months.map((month) => ({
-      id: month,
-      name: `${Number(month.slice(0, 4))}年${Number(month.slice(5, 7))}月`,
-      salesQty: filteredRows.reduce((sum, row) => sum + numberValue(row.purchaseByMonth?.[month]?.unfulfilledQty), 0),
-      salesAmount: filteredRows.reduce((sum, row) => sum + numberValue(row.purchaseByMonth?.[month]?.unfulfilledValue), 0)
-    }));
-  }, [filteredRows]);
-  const distribution = (field) => {
-    const map = new Map();
-    filteredRows.forEach((row) => (row[field] || []).forEach((item) => {
-      const current = map.get(item.name) || { name: item.name, qty: 0, value: 0 };
-      current.qty += numberValue(item.qty);
-      current.value += numberValue(item.value);
-      map.set(item.name, current);
-    }));
-    return [...map.values()];
-  };
-  const reasonRows = useMemo(() => distribution('unfulfilledReasons'), [filteredRows]);
-  const detailRows = useMemo(() => distribution('reasonDetails'), [filteredRows]);
-  const remarkRows = useMemo(() => distribution('remarks'), [filteredRows]);
-  const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize));
-  const pageRows = filteredRows.slice((currentPage - 1) * pageSize, currentPage * pageSize);
-  useEffect(() => { setCurrentPage(1); }, [filters, pageSize]);
-  useEffect(() => {
-    if (currentPage > totalPages) setCurrentPage(totalPages);
-  }, [currentPage, totalPages]);
-
-  const updateFilter = (key, value) => setFilters((current) => ({ ...current, [key]: value }));
-  const clearFilters = () => {
-    setSearchInput('');
-    setFilters({ businessUnits: [], productLines: [], productSeries: [], deliveryStatuses: [], keyword: '' });
-  };
-  const share = (value) => totals.unfulfilledQty ? numberValue(value) / totals.unfulfilledQty * 100 : 0;
-  const columns = ['事业部', '产品线', '系列', '物料编码', 'SKU', 'SKU名称', '未交付数量', '是否需正常交货', '已生产未发货', '已下单未备料未生产', '已备料未生产', '生产中产品', '不含税结算价', '正常履约订单数量', '正常履约订单金额', '非正常履约订单数量', '非正常履约订单金额'];
-  const renderRow = (row) => [
-    row.businessUnit, row.productLine, row.productSeries, row.materialCode, row.sku, row.materialName,
-    formatDashboardNumber(row.unfulfilledQty), row.deliveryStatus, formatDashboardNumber(row.finishedNotShippedQty),
-    formatDashboardNumber(row.unpreparedQty), formatDashboardNumber(row.preparedNotStartedQty),
-    formatDashboardNumber(row.inProductionQty), formatDashboardNumber(row.pretaxPrice),
-    formatDashboardNumber(row.normalOrderQty), formatDashboardWan(row.normalOrderValue),
-    formatDashboardNumber(row.abnormalOrderQty), formatDashboardWan(row.abnormalOrderValue)
-  ];
-
-  async function exportRows() {
-    if (!filteredRows.length) return;
-    setExporting(true);
-    try {
-      const XLSX = await import('xlsx');
-      const rawRows = filteredRows.map((row) => [
-        row.businessUnit, row.productLine, row.productSeries, row.materialCode, row.sku, row.materialName,
-        row.unfulfilledQty, row.deliveryStatus, row.finishedNotShippedQty, row.unpreparedQty,
-        row.preparedNotStartedQty, row.inProductionQty, row.pretaxPrice,
-        row.normalOrderQty, row.normalOrderValue, row.abnormalOrderQty, row.abnormalOrderValue
-      ]);
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([columns, ...rawRows]), '采购未交付');
-      await writeStyledExcelFile(XLSX, workbook, `采购未交付_${todayText()}.xlsx`);
-    } finally {
-      setExporting(false);
-    }
-  }
-
-  return (
-    <section className="inventory-dashboard">
-      <div className="inventory-dashboard-heading">
-        <div><h2>采购未交付</h2><p>采购跟单情况中的未交付、生产进度与未履约原因</p></div>
-        <span>数据更新：{data?.updatedAt || '暂无'}</span>
-      </div>
-      {loading ? <div className="inventory-summary-status">加载中</div> : error ? (
-        <div className="inventory-summary-status error">采购未交付加载失败：{error}</div>
-      ) : (
-        <>
-          <div className="toolbar filters-row inventory-summary-filters inventory-purchase-file-filters">
-            <MultiSelectFilter label="事业部" allLabel="全部事业部" value={filters.businessUnits} options={options.businessUnits} onChange={(value) => updateFilter('businessUnits', value)} />
-            <MultiSelectFilter label="产品线" allLabel="全部产品线" value={filters.productLines} options={options.productLines} onChange={(value) => updateFilter('productLines', value)} />
-            <MultiSelectFilter label="系列" allLabel="全部系列" value={filters.productSeries} options={options.productSeries} onChange={(value) => updateFilter('productSeries', value)} />
-            <MultiSelectFilter label="交货状态" allLabel="全部交货状态" value={filters.deliveryStatuses} options={options.deliveryStatuses} onChange={(value) => updateFilter('deliveryStatuses', value)} />
-            <input className="search-input" placeholder="搜索物料编码、SKU或名称" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} />
-            <button type="button" className="ghost compact-button" onClick={clearFilters}>清除筛选</button>
-          </div>
-          <section className="inventory-kpi-grid inventory-purchase-kpis">
-            <InventoryPurchaseMetric label="未交付" quantity={totals.unfulfilledQty} value={formatDashboardWan(totals.unfulfilledValue)} note="当前筛选/全量" share={fullTotals.unfulfilledQty ? totals.unfulfilledQty / fullTotals.unfulfilledQty * 100 : 0} tone="materials" />
-            <InventoryPurchaseMetric label="正常履约" quantity={totals.normalOrderQty} value={formatDashboardWan(totals.normalOrderValue)} note="占未交付" share={share(totals.normalOrderQty)} tone="total" />
-            <InventoryPurchaseMetric label="非正常履约" quantity={totals.abnormalOrderQty} value={formatDashboardWan(totals.abnormalOrderValue)} note="占未交付" share={share(totals.abnormalOrderQty)} tone="cross-border" />
-            <InventoryPurchaseMetric label="已生产未发货" quantity={totals.finishedNotShippedQty} value={formatDashboardWan(totals.finishedNotShippedValue)} note="占未交付" share={share(totals.finishedNotShippedQty)} tone="transit" />
-            <InventoryPurchaseMetric label="未备料/已备料" quantity={totals.unpreparedQty + totals.preparedNotStartedQty} value={formatDashboardWan(totals.unpreparedValue + totals.preparedNotStartedValue)} note="占未交付" share={share(totals.unpreparedQty + totals.preparedNotStartedQty)} tone="domestic" />
-            <InventoryPurchaseMetric label="生产中产品" quantity={totals.inProductionQty} value={formatDashboardWan(totals.inProductionValue)} note="占未交付" share={share(totals.inProductionQty)} tone="production" />
-          </section>
-          <section className="inventory-purchase-chart-grid inventory-purchase-file-charts">
-            <InventorySummaryLineChart title="每月未交付变化趋势" rows={monthRows} monthly baseLabel="未交付" />
-            <InventoryPurchaseRanking title="产品线未交付排名" rows={productLineRows} />
-            <InventoryPurchaseStageBars totals={totals} />
-            <InventoryPurchaseDistribution title="未履约原因分布" rows={reasonRows} />
-            <InventoryPurchaseDistribution title="原因详情排名" rows={detailRows} />
-            <InventoryPurchaseDistribution title="备注分布" rows={remarkRows} />
-          </section>
-          <div className="inventory-table-tabs inventory-summary-table-head">
-            <strong>采购未交付明细</strong>
-            <div className="inventory-table-actions">
-              <span>当前筛选 {filteredRows.length} / {rows.length} 条</span>
-              <button type="button" className="ghost compact-button" disabled={exporting || !filteredRows.length} onClick={exportRows}>{exporting ? '导出中...' : '导出Excel'}</button>
-              <label className="inventory-page-size">每页
-                <select value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))}>
-                  {[10, 25, 50, 100].map((value) => <option key={value} value={value}>{value} 条</option>)}
-                </select>
-              </label>
-            </div>
-          </div>
-          <DataTable className="inventory-summary-table inventory-purchase-table" rows={pageRows} columns={columns} render={renderRow} />
-          {filteredRows.length > pageSize && <TablePagination label="采购未交付分页" currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} pageSize={pageSize} />}
         </>
       )}
     </section>
@@ -4337,12 +3815,8 @@ function App() {
       </aside>
       <section className="content" onClick={(event) => event.stopPropagation()}>
         {message && <p className="message">{message}</p>}
-        {shouldMount('inventoryRisk') && <PagePane page="inventoryRisk" activeTab={activeTab}><React.Suspense fallback={<div className="loading-fallback">加载中...</div>}><InventoryRiskPage token={token} active={activeTab === 'inventoryRisk'} /></React.Suspense></PagePane>}
-        {shouldMount('beiHuoGongJu') && <PagePane page="beiHuoGongJu" activeTab={activeTab}><React.Suspense fallback={<div className="loading-fallback">加载中...</div>}><BeiHuoGongJuPage token={token} active={activeTab === 'beiHuoGongJu'} /></React.Suspense></PagePane>}
-        {shouldMount('beiHuoReviewLibrary') && <PagePane page="beiHuoReviewLibrary" activeTab={activeTab}><DimensionLibrary token={token} reloadDemands={reloadDemands} reloadDemandData={false} setMessage={setMessage} title="备货文件导入" slots={BEI_HUO_REVIEW_LIBRARY_SLOTS} gridColumns={4} /></PagePane>}
         {shouldMount('fullInventorySummary') && <PagePane page="fullInventorySummary" activeTab={activeTab}><React.Suspense fallback={<div className="loading-fallback">加载中...</div>}><FullInventorySummaryPage token={token} active={activeTab === 'fullInventorySummary'} /></React.Suspense></PagePane>}
         {shouldMount('supplyPlanBoard') && <PagePane page="supplyPlanBoard" activeTab={activeTab}><React.Suspense fallback={<div className="loading-fallback">加载中...</div>}><SupplyPlanBoard token={token} active={activeTab === 'supplyPlanBoard'} /></React.Suspense></PagePane>}
-        {shouldMount('inventoryPurchase') && <PagePane page="inventoryPurchase" activeTab={activeTab}><InventoryPurchaseFilePage token={token} active={activeTab === 'inventoryPurchase'} /></PagePane>}
         {shouldMount('inventorySummaryLibrary') && <PagePane page="inventorySummaryLibrary" activeTab={activeTab}><DimensionLibrary token={token} reloadDemands={reloadDemands} reloadDemandData={false} setMessage={setMessage} title="底表文件" slots={INVENTORY_SUMMARY_LIBRARY_SLOTS} gridColumns={4} /></PagePane>}
         {shouldMount('dimensionLibrary') && <PagePane page="dimensionLibrary" activeTab={activeTab}><DimensionLibrary token={token} reloadDemands={reloadDemands} setMessage={setMessage} gridColumns={3} /></PagePane>}
         <PersistentHorizontalScrollbar activeTab={activeTab} />
