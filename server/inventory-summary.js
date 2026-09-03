@@ -89,7 +89,18 @@ const FIELD_ALIASES = {
   supplierShortName: ['供应商简称', '未交付供应商简称'],
   unfulfilledReason: ['未履约原因'],
   reasonDetail: ['原因详情'],
-  remark: ['备注']
+  remark: ['备注'],
+  onHandQty: ['在库量', '库存数量', '库存量', '期末库存', '可用库存', '实际库存'],
+  inTransitQty: ['在途量', '在途数量', '运输中数量', '在途库存', '在途'],
+  operator: ['运营', '运营人员', '负责人', '运营负责人', '对接人', '运营对接人'],
+  undeliveredQty: ['未交付数量', '未交付量', '剩余数量', '未交付', '在制量', '未交货数量', '未入库数量'],
+  month1: ['8', 'M1', '第1个月', 'Month1', 'month1', 'm1'],
+  month2: ['9', 'M2', '第2个月', 'Month2', 'month2', 'm2'],
+  month3: ['10', 'M3', '第3个月', 'Month3', 'month3', 'm3'],
+  month4: ['11', 'M4', '第4个月', 'Month4', 'month4', 'm4'],
+  month5: ['12', 'M5', '第5个月', 'Month5', 'month5', 'm5'],
+  month6: ['1', 'M6', '第6个月', 'Month6', 'month6', 'm6'],
+  skuName: ['SKU名称', '商品名称', '产品名称', '名称']
 };
 
 const SLOT_SCHEMAS = {
@@ -179,6 +190,18 @@ const SLOT_SCHEMAS = {
   inventorySummaryFile17: {
     required: ['sku', 'warehouseName', 'wfsTransitQty'],
     fields: ['sku', 'warehouseName', 'wfsTransitQty']
+  },
+  inventorySummaryFile18: {
+    required: ['warehouseName', 'businessUnit', 'materialCode', 'onHandQty'],
+    fields: ['warehouseName', 'businessUnit', 'materialCode', 'onHandQty', 'inTransitQty']
+  },
+  inventorySummaryFile19: {
+    required: ['businessUnit', 'materialCode', 'undeliveredQty'],
+    fields: ['businessUnit', 'operator', 'materialCode', 'undeliveredQty']
+  },
+  inventorySummaryFile21: {
+    required: ['businessUnit', 'materialCode', 'month1', 'month2', 'month3', 'month4', 'month5', 'month6'],
+    fields: ['businessUnit', 'materialCode', 'sku', 'skuName', 'month1', 'month2', 'month3', 'month4', 'month5', 'month6']
   }
 };
 
@@ -220,7 +243,10 @@ const INVENTORY_QUANTITY_FIELDS = {
   inventorySummaryFile3: 'totalInventoryQty',
   inventorySummaryFile6: 'domesticStockQty',
   inventorySummaryFile7: 'jdStockQty',
-  inventorySummaryFile17: 'wfsTransitQty'
+  inventorySummaryFile17: 'wfsTransitQty',
+  inventorySummaryFile18: 'onHandQty',
+  inventorySummaryFile19: 'undeliveredQty',
+  inventorySummaryFile21: 'month1'
 };
 const SUMMARY_ROW_LABELS = new Set([
   '合计',
@@ -241,7 +267,10 @@ const FACT_SUMMARY_IDENTITY_FIELDS = {
   inventorySummaryFile8: ['materialCode'],
   inventorySummaryFile12: ['materialCode'],
   inventorySummaryFile14: ['materialCode'],
-  inventorySummaryFile17: ['sku']
+  inventorySummaryFile17: ['sku'],
+  inventorySummaryFile18: ['warehouseName', 'businessUnit', 'materialCode'],
+  inventorySummaryFile19: ['businessUnit', 'materialCode'],
+  inventorySummaryFile21: ['businessUnit', 'materialCode']
 };
 const INVENTORY_SOURCE_TYPES = new Set([
   'FBA库存',

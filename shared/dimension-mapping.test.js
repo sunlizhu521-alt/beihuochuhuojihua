@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import xlsx from 'xlsx';
+import { parseInventorySummaryWorkbook } from '../server/inventory-summary.js';
 import { DIMENSION_SLOTS, INVENTORY_SUMMARY_LIBRARY_SLOTS } from './dimension-slot-config.js';
 import { duplicateMappingColumns, mappingValidation, validMappingForColumns } from './dimension-mapping.js';
 
@@ -39,4 +41,50 @@ test('底表四个槽位均要求人工确认映射', () => {
     assert.equal(slot.requireMappingConfirmation, true);
     assert.ok(slot.requiredFields.length > 0);
   });
+});
+
+test('库存、未交付和M+6槽位使用约定字段及必填项', () => {
+  const slots = Object.fromEntries(INVENTORY_SUMMARY_LIBRARY_SLOTS.map((slot) => [slot.id, slot]));
+  assert.deepEqual(slots.inventorySummaryFile18.fields.map(([key]) => key), ['warehouseName', 'businessUnit', 'materialCode', 'onHandQty', 'inTransitQty']);
+  assert.deepEqual(slots.inventorySummaryFile18.requiredFields, ['warehouseName', 'businessUnit', 'materialCode', 'onHandQty']);
+  assert.deepEqual(slots.inventorySummaryFile19.fields.map(([key]) => key), ['businessUnit', 'operator', 'materialCode', 'undeliveredQty']);
+  assert.deepEqual(slots.inventorySummaryFile21.fields.map(([key]) => key), ['businessUnit', 'materialCode', 'sku', 'skuName', 'month1', 'month2', 'month3', 'month4', 'month5', 'month6']);
+});
+
+function workbookFile(rows) {
+  const workbook = xlsx.utils.book_new();
+  xlsx.utils.book_append_sheet(workbook, xlsx.utils.aoa_to_sheet(rows), '数据');
+  return { buffer: xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' }) };
+}
+
+test('后端可按别名解析三个新槽位并过滤零数量行', () => {
+  const inventory = parseInventorySummaryWorkbook(workbookFile([
+    ['仓库名称', '事业部', '物料编码', '库存数量', '在途数量'],
+    ['华南仓', '国内事业部', 'MAT-001', 12, 3],
+    ['华东仓', '国内事业部', 'MAT-002', 0, 8]
+  ]), 'inventorySummaryFile18');
+  assert.deepEqual(inventory.rows, [{ warehouseName: '华南仓', businessUnit: '国内事业部', materialCode: 'MAT-001', onHandQty: 12, inTransitQty: 3 }]);
+  assert.equal(inventory.mapping.__inventorySummary.filteredZeroQtyRows, 1);
+
+  const undelivered = parseInventorySummaryWorkbook(workbookFile([
+    ['事业部', '运营负责人', '物料编码', '未交货数量'],
+    ['海外一部', '张三', 'MAT-003', 6]
+  ]), 'inventorySummaryFile19');
+  assert.deepEqual(undelivered.rows[0], { businessUnit: '海外一部', operator: '张三', materialCode: 'MAT-003', undeliveredQty: 6 });
+
+  const forecast = parseInventorySummaryWorkbook(workbookFile([
+    ['事业部', '物料编码', 'SKU', 'SKU名称', '8', '9', '10', '11', '12', '1'],
+    ['海外二部', 'MAT-004', 'SKU-004', '测试产品', 1, 2, 3, 4, 5, 6]
+  ]), 'inventorySummaryFile21');
+  assert.deepEqual(forecast.rows[0], {
+    businessUnit: '海外二部', materialCode: 'MAT-004', sku: 'SKU-004', skuName: '测试产品',
+    month1: 1, month2: 2, month3: 3, month4: 4, month5: 5, month6: 6
+  });
+});
+
+test('后端拒绝缺少必填月份的M+6预测文件', () => {
+  assert.throws(() => parseInventorySummaryWorkbook(workbookFile([
+    ['事业部', '物料编码', '8', '9', '10', '11', '12'],
+    ['海外二部', 'MAT-005', 1, 2, 3, 4, 5]
+  ]), 'inventorySummaryFile21'), /缺少必填列：1/);
 });

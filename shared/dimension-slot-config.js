@@ -97,18 +97,15 @@ export const DIMENSION_SLOTS = [
 export const INVENTORY_SUMMARY_LIBRARY_SLOTS = [
   {
     id: 'inventorySummaryFile18', title: '库存数据',
-    fields: [['businessUnit', '事业部'], ['materialCode', '物料编码'], ['sku', 'SKU'], ['materialName', '名称'], ['onHandQty', '在库量'], ['inTransitQty', '在途量']],
-    requiredFields: ['businessUnit', 'materialCode', 'onHandQty', 'inTransitQty'],
-    mappingNote: '按“事业部 + 物料编码”核算，SKU 和名称用于展示与复核。'
+    fields: [['warehouseName', '仓库名称'], ['businessUnit', '事业部'], ['materialCode', '物料编码'], ['onHandQty', '在库量'], ['inTransitQty', '在途量']],
+    requiredFields: ['warehouseName', 'businessUnit', 'materialCode', 'onHandQty'],
+    mappingNote: '按“仓库名称 + 事业部 + 物料编码”核算，在库量为必填字段。'
   },
   {
     id: 'inventorySummaryFile19', title: '未交付数据',
-    fields: [
-      ['businessUnit', '事业部'], ['materialCode', '物料编码'], ['sku', 'SKU'], ['materialName', '名称'], ['undeliveredQty', '未交付数量'],
-      ['finishedQty', '已生产未发货'], ['unpreparedQty', '已下单未备料未生产'], ['preparedNotStartedQty', '已备料未生产'], ['inProductionQty', '生产中产品']
-    ],
+    fields: [['businessUnit', '事业部'], ['operator', '运营'], ['materialCode', '物料编码'], ['undeliveredQty', '未交付数量']],
     requiredFields: ['businessUnit', 'materialCode', 'undeliveredQty'],
-    mappingNote: '未交付总量为核心字段，履约阶段数量用于原因复核。'
+    mappingNote: '按“事业部 + 物料编码”核算，运营用于责任人复核。'
   },
   {
     id: 'inventorySummaryFile20', title: '销售数据',
@@ -119,12 +116,12 @@ export const INVENTORY_SUMMARY_LIBRARY_SLOTS = [
   {
     id: 'inventorySummaryFile21', title: 'M+6 预测',
     fields: [
-      ['businessUnit', '事业部'], ['materialCode', '物料编码'], ['sku', 'SKU'], ['materialName', '名称'],
-      ['forecastM1', 'M+1 预测'], ['forecastM2', 'M+2 预测'], ['forecastM3', 'M+3 预测'],
-      ['forecastM4', 'M+4 预测'], ['forecastM5', 'M+5 预测'], ['forecastM6', 'M+6 预测']
+      ['businessUnit', '事业部'], ['materialCode', '物料编码'], ['sku', 'SKU'], ['skuName', 'SKU名称'],
+      ['month1', '第1个月'], ['month2', '第2个月'], ['month3', '第3个月'],
+      ['month4', '第4个月'], ['month5', '第5个月'], ['month6', '第6个月']
     ],
-    requiredFields: ['businessUnit', 'materialCode', 'forecastM1', 'forecastM2', 'forecastM3', 'forecastM4', 'forecastM5', 'forecastM6'],
-    mappingNote: '上传时把实际月份列依次对应到 M+1 至 M+6，避免月份错位。'
+    requiredFields: ['businessUnit', 'materialCode', 'month1', 'month2', 'month3', 'month4', 'month5', 'month6'],
+    mappingNote: '上传时把实际月份列依次对应到第1至第6个月，避免月份错位。'
   }
 ].map((slot) => ({
   ...slot,
