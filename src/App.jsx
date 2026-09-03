@@ -2938,8 +2938,6 @@ function validMappingForColumns(mapping = {}, columns = [], fields = [], inferMi
   }, {});
 }
 
-const INVENTORY_MAPPING_PRESET_KIND = 'inventory-slot-fields';
-
 function isInventoryMappingSlot(slotId) {
   return /^inventory(?:Summary|Manual)File\d+$/.test(normalize(slotId));
 }
@@ -3049,9 +3047,7 @@ function DimensionLibrary({ token, reloadDemands, reloadDemandData = true, setMe
   const [local, setLocal] = useState({});
   const [issuePage, setIssuePage] = useState(1);
   const mappingPresetsRef = useRef({});
-  const mappingSaveQueueRef = useRef(Promise.resolve());
   const isFirstMileLibrary = slots.some((slot) => slot.firstMile);
-  const usesInventoryMappings = slots.some((slot) => isInventoryMappingSlot(slot.id));
   const issuePageSize = 20;
   const issueRows = useMemo(() => records.flatMap((record) => {
     const summary = record.mapping?.__firstMileSummary;
@@ -3072,29 +3068,19 @@ function DimensionLibrary({ token, reloadDemands, reloadDemandData = true, setMe
   }
 
   async function load() {
-    const [payload, presetPayload] = await Promise.all([
-      request('/api/dimensions', { token }),
-      usesInventoryMappings
-        ? request(`/api/mappings/${INVENTORY_MAPPING_PRESET_KIND}`, { token })
-        : Promise.resolve({ mapping: {} })
-    ]);
-    setRecords(payload.rows || []);
-    if (usesInventoryMappings) mappingPresetsRef.current = presetPayload.mapping || {};
+    const payload = await request('/api/dimensions', { token });
+    const rows = payload.rows || [];
+    setRecords(rows);
+    mappingPresetsRef.current = Object.fromEntries(
+      rows
+        .filter((row) => isInventoryMappingSlot(row.slot_id))
+        .map((row) => [row.slot_id, row.mapping || {}])
+    );
   }
 
   function persistInventoryMapping(slot, mapping) {
     if (!isInventoryMappingSlot(slot.id)) return;
-    const nextPresets = { ...mappingPresetsRef.current, [slot.id]: mapping };
-    mappingPresetsRef.current = nextPresets;
-    const body = JSON.stringify({ mapping: nextPresets });
-    mappingSaveQueueRef.current = mappingSaveQueueRef.current
-      .catch(() => {})
-      .then(() => request(`/api/mappings/${INVENTORY_MAPPING_PRESET_KIND}`, {
-        token,
-        method: 'PUT',
-        body
-      }))
-      .catch(() => {});
+    mappingPresetsRef.current = { ...mappingPresetsRef.current, [slot.id]: mapping };
   }
 
   useEffect(() => { load().catch(() => {}); }, []);
