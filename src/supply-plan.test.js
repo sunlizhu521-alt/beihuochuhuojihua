@@ -101,6 +101,15 @@ test('供应计划按事业部、产品线和系列精确筛选', () => {
   );
 });
 
+test('供应计划支持动作结论筛选', () => {
+  const rows = [
+    { businessUnit: '一部', productLine: 'A', productSeries: 'S1', actionConclusion: '加急补货' },
+    { businessUnit: '二部', productLine: 'B', productSeries: 'S2', actionConclusion: '正常流转' }
+  ];
+  assert.deepEqual(filterSupplyPlanRows(rows, { actionConclusion: '加急补货' }), [rows[0]]);
+  assert.deepEqual(buildSupplyPlanFilterOptions(rows, {}).actionConclusion, ['正常流转', '加急补货', '调整计划', '停采观察']);
+});
+
 test('供应计划筛选选项按其他已选条件联动', () => {
   const sourceRows = [
     { businessUnit: '国内事业部', productLine: '护理床', productSeries: 'A系列' },

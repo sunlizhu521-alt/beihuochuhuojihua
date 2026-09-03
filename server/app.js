@@ -30,7 +30,7 @@ import {
   normalizeSupplyPlanParams
 } from './inventory-risk.js';
 import { buildInventoryRiskWorkbook } from './inventory-risk-export.js';
-import { buildSupplyPlanData, paginateSupplyPlanData, supplyPlanModelDetail } from './supply-plan.js';
+import { buildSupplyPlanData, paginateSupplyPlanData, prepareSupplyPlanBeihuoPush, supplyPlanModelDetail } from './supply-plan.js';
 import { buildSupplyPlanExportData, formatSupplyPlanExportDate, generateSupplyPlanExcel } from './supply-plan-export.js';
 
 
@@ -1945,7 +1945,8 @@ app.get('/api/supply-plan/summary', requireAuth, requirePage('supplyPlanBoard'),
       filters: {
         businessUnit: req.query.businessUnit,
         productLine: req.query.productLine,
-        productSeries: req.query.productSeries
+        productSeries: req.query.productSeries,
+        actionConclusion: req.query.actionConclusion
       }
     });
     res.setHeader('Cache-Control', 'no-store');
@@ -1970,7 +1971,8 @@ app.get('/api/supply-plan/model-detail', requireAuth, requirePage('supplyPlanBoa
       filters: {
         businessUnit: req.query.businessUnit,
         productLine: req.query.productLine,
-        productSeries: req.query.productSeries
+        productSeries: req.query.productSeries,
+        actionConclusion: req.query.actionConclusion
       }
     });
     res.setHeader('Cache-Control', 'no-store');
@@ -2000,6 +2002,16 @@ app.post('/api/supply-plan/export', requireAuth, requirePage('supplyPlanBoard'),
     return res.send(buffer);
   } catch (error) {
     return res.status(400).json({ error: error.message || '供应计划 Excel 生成失败' });
+  }
+});
+
+app.post('/api/supply-plan/push-to-beihuo', requireAuth, requirePage('supplyPlanBoard'), (req, res) => {
+  try {
+    const { payload } = supplyPlanDataset(req.body?.horizonMonths ?? req.body?.months);
+    res.setHeader('Cache-Control', 'no-store');
+    return res.json(prepareSupplyPlanBeihuoPush(payload, req.body || {}));
+  } catch (error) {
+    return res.status(400).json({ error: error.message || '备货计划待推送数据生成失败' });
   }
 });
 

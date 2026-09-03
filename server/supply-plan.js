@@ -153,13 +153,69 @@ export function supplyPlanModelKey(row = {}) {
   );
 }
 
+const SUPPLY_PLAN_ACTIONS = {
+  正常流转: { color: '#4caf50', severity: 0 },
+  停采观察: { color: '#9e9e9e', severity: 1 },
+  调整计划: { color: '#ff9800', severity: 2 },
+  加急补货: { color: '#f44336', severity: 3 }
+};
+
+function roundedMetric(value) {
+  return Math.round((numberValue(value) + Number.EPSILON) * 100) / 100;
+}
+
+function weekForecastQuantity(item, index) {
+  return numberValue(item.weekForecasts?.[index]?.forecastQty ?? item.weeklyForecast?.[index]);
+}
+
+export function getActionConclusion(item = {}) {
+  const currentWeekForecast = weekForecastQuantity(item, 0);
+  const fourWeekForecast = Array.from({ length: 4 }, (_, index) => weekForecastQuantity(item, index));
+  const forecastDaily = currentWeekForecast > 0
+    ? currentWeekForecast / 7
+    : fourWeekForecast.reduce((sum, value) => sum + value, 0) / 28;
+  const stockCoverDays = forecastDaily > 0 ? numberValue(item.onHandQty) / forecastDaily : 999;
+  const inventoryRemaining = numberValue(item.inTransitQty) + numberValue(item.onHandQty) - currentWeekForecast;
+  const rawDaysUntilShortage = Math.max(0, numberValue(item.totalLeadTimeDays) - stockCoverDays);
+  const daysUntilShortage = inventoryRemaining < 0 ? 0 : rawDaysUntilShortage;
+  const suggestedPurchase = numberValue(item.suggestedPurchase ?? item.purchaseGap);
+  const safetyStock = numberValue(item.safetyStock ?? item.safetyStockQty);
+  const hasNoForecast4Weeks = fourWeekForecast.every((value) => value === 0);
+  let conclusion = '正常流转';
+
+  if (suggestedPurchase <= 0 && numberValue(item.onHandQty) > safetyStock * 2 && hasNoForecast4Weeks) {
+    conclusion = '停采观察';
+  } else if (inventoryRemaining < 0 || (suggestedPurchase > 0 && daysUntilShortage <= 14)) {
+    conclusion = '加急补货';
+  } else if (suggestedPurchase > 0 && daysUntilShortage <= 45) {
+    conclusion = '调整计划';
+  }
+
+  return {
+    forecastDaily: roundedMetric(forecastDaily),
+    stockCoverDays: roundedMetric(stockCoverDays),
+    daysUntilShortage: roundedMetric(daysUntilShortage),
+    conclusion,
+    color: SUPPLY_PLAN_ACTIONS[conclusion].color
+  };
+}
+
+export function aggregateSupplyPlanAction(rows = []) {
+  return rows.reduce((current, row) => {
+    const action = SUPPLY_PLAN_ACTIONS[row.actionConclusion] || SUPPLY_PLAN_ACTIONS.正常流转;
+    return action.severity > current.severity
+      ? { conclusion: row.actionConclusion, color: row.actionColor || action.color, severity: action.severity }
+      : current;
+  }, { conclusion: '正常流转', color: SUPPLY_PLAN_ACTIONS.正常流转.color, severity: 0 });
+}
+
 function withSupplyPlanCalculations(row) {
   const weeklyForecast = Array.isArray(row.weeklyForecast) ? row.weeklyForecast.map(numberValue) : [];
   const forecastTotal = weeklyForecast.reduce((sum, value) => sum + value, 0);
   const dailyForecast = Math.round(numberValue(row.forecastDailyQty));
   const safetyStockQty = dailyForecast * numberValue(row.safetyDays);
   const currentWeekForecast = numberValue(weeklyForecast[0]);
-  return {
+  const calculated = {
     ...row,
     weeklyForecast,
     forecastTotal,
@@ -173,6 +229,15 @@ function withSupplyPlanCalculations(row) {
         - numberValue(row.inTransitQty)
         - numberValue(row.undeliveredQty)
     )
+  };
+  const action = getActionConclusion(calculated);
+  return {
+    ...calculated,
+    forecastDaily: action.forecastDaily,
+    stockCoverDays: action.stockCoverDays,
+    daysUntilShortage: action.daysUntilShortage,
+    actionConclusion: action.conclusion,
+    actionColor: action.color
   };
 }
 
@@ -283,6 +348,7 @@ export function buildSupplyPlanData({
     const productLine = text(product.productLine) || '未匹配产品线';
     const productSeries = text(product.productSeries) || '未匹配系列';
     const model = text(product.model);
+    const modelKey = modelKeyValue(productLine, productSeries, model, item.sku || item.materialCode);
     return withSupplyPlanCalculations({
       businessUnit: item.businessUnit,
       materialCode: item.materialCode,
@@ -292,7 +358,8 @@ export function buildSupplyPlanData({
       productLine,
       productSeries,
       model: model || '未匹配型号',
-      modelKey: modelKeyValue(productLine, productSeries, model, item.sku || item.materialCode),
+      modelKey,
+      modelId: modelKey,
       salesRegion: text(product.salesRegion),
       pretaxPrice: numberValue(product.pretaxPrice),
       productLifecycle: text(feedback.productLifecycle || feedback.unifiedStage),
@@ -307,6 +374,7 @@ export function buildSupplyPlanData({
       undeliveredQty: item.undeliveredQty,
       operator: item.operator,
       safetyDays: numberValue(channelSettings.safetyDays ?? channelSettings.fullChainDays),
+      totalLeadTimeDays: numberValue(channelSettings.fullChainDays),
       forecastDailyQty: forecastDaily.days ? forecastDaily.total / forecastDaily.days : 0,
       weekForecasts: weeks.map((week, index) => ({ ...week, forecastQty: weeklyForecast[index] })),
       weeklyForecast
@@ -344,7 +412,8 @@ const MODEL_SUM_FIELDS = [
   'purchaseGap'
 ];
 
-const FILTER_FIELDS = ['businessUnit', 'productLine', 'productSeries'];
+const FILTER_FIELDS = ['businessUnit', 'productLine', 'productSeries', 'actionConclusion'];
+const ACTION_CONCLUSION_ORDER = ['正常流转', '加急补货', '调整计划', '停采观察'];
 
 function matchesFilters(row, filters = {}, omittedField = '') {
   return FILTER_FIELDS.every((field) => (
@@ -353,7 +422,9 @@ function matchesFilters(row, filters = {}, omittedField = '') {
 }
 
 function filterOptions(rows, filters) {
-  return Object.fromEntries(FILTER_FIELDS.map((field) => [field, [...new Set(rows
+  return Object.fromEntries(FILTER_FIELDS.map((field) => [field, field === 'actionConclusion'
+    ? ACTION_CONCLUSION_ORDER
+    : [...new Set(rows
     .filter((row) => matchesFilters(row, filters, field))
     .map((row) => text(row[field]))
     .filter(Boolean))].sort((left, right) => left.localeCompare(right, 'zh-CN'))]));
@@ -365,6 +436,7 @@ export function groupSupplyPlanModels(rows = [], weekCount = 0) {
     const key = supplyPlanModelKey(row);
     const group = groups.get(key) || {
       modelKey: key,
+      modelId: key,
       productLine: row.productLine,
       productSeries: row.productSeries,
       model: row.model,
@@ -382,6 +454,9 @@ export function groupSupplyPlanModels(rows = [], weekCount = 0) {
       value + numberValue(row.weeklyForecast?.[index])
     ));
     group.childCount += 1;
+    const action = aggregateSupplyPlanAction([group, row]);
+    group.actionConclusion = action.conclusion;
+    group.actionColor = action.color;
     groups.set(key, group);
   });
   return [...groups.values()].sort((left, right) => (
@@ -441,5 +516,54 @@ export function supplyPlanModelDetail(payload, {
     horizonMonths: payload.horizonMonths,
     weeks: payload.weeks,
     rows
+  };
+}
+
+const BEIHUO_PUSH_ACTIONS = {
+  urgent: { conclusion: '加急补货', targetPool: '紧急补货' },
+  normal: { conclusion: '调整计划', targetPool: '常规补货' },
+  pause: { conclusion: '停采观察', targetPool: '暂停采购' }
+};
+
+export function prepareSupplyPlanBeihuoPush(payload = {}, { modelIds = [], actionType = '' } = {}) {
+  const action = BEIHUO_PUSH_ACTIONS[text(actionType)];
+  if (!action) throw new Error('actionType 必须是 urgent、normal 或 pause');
+  if (!Array.isArray(modelIds) || !modelIds.length) throw new Error('请至少选择一个型号');
+  const selectedIds = new Set(modelIds.map(text).filter(Boolean));
+  const selectedRows = (payload.rows || []).filter((row) => selectedIds.has(text(row.modelId || supplyPlanModelKey(row))));
+  if (!selectedRows.length) throw new Error('未找到选中的型号');
+  const items = selectedRows.filter((row) => row.actionConclusion === action.conclusion).map((row) => ({
+    modelId: row.modelId || supplyPlanModelKey(row),
+    model: row.model,
+    businessUnit: row.businessUnit,
+    materialCode: row.materialCode,
+    sku: row.sku,
+    actionConclusion: row.actionConclusion,
+    suggestedPurchaseQty: numberValue(row.purchaseGap)
+  }));
+  if (!items.length) throw new Error(`所选型号没有“${action.conclusion}”明细`);
+  const models = new Map();
+  items.forEach((item) => {
+    const current = models.get(item.modelId) || {
+      modelId: item.modelId,
+      model: item.model,
+      suggestedPurchaseQty: 0,
+      itemCount: 0
+    };
+    current.suggestedPurchaseQty += item.suggestedPurchaseQty;
+    current.itemCount += 1;
+    models.set(item.modelId, current);
+  });
+  return {
+    ok: true,
+    status: 'reserved',
+    connected: false,
+    pushed: false,
+    actionType,
+    actionConclusion: action.conclusion,
+    targetPool: action.targetPool,
+    models: [...models.values()],
+    items,
+    message: '备货计划接口已预留，当前仅生成待推送数据，尚未写入外部系统。'
   };
 }

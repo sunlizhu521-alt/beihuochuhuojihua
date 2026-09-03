@@ -103,7 +103,7 @@ function dateAfterDays(value, days) {
 }
 
 function matchesFilters(row, filters = {}) {
-  return ['businessUnit', 'productLine', 'productSeries'].every((field) => (
+  return ['businessUnit', 'productLine', 'productSeries', 'actionConclusion'].every((field) => (
     !text(filters[field]) || text(row?.[field]) === text(filters[field])
   ));
 }

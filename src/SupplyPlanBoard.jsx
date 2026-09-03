@@ -29,7 +29,8 @@ const SUMMARY_FIXED_COLUMNS = [
   { key: 'productSeries', label: '系列', width: 92 },
   { key: 'model', label: '型号', width: 142 },
   { key: 'safetyStockQty', label: '安全库存数量', width: 112 },
-  { key: 'metric', label: '供应计划指标', width: 112 }
+  { key: 'metric', label: '供应计划指标', width: 112 },
+  { key: 'actionConclusion', label: '动作结论', width: 100 }
 ];
 const CHILD_DETAIL_COLUMNS = [
   { key: 'businessUnit', label: '事业部', width: 116 },
@@ -44,7 +45,7 @@ const EXPANDED_FIXED_COLUMNS = [
   ...CHILD_DETAIL_COLUMNS,
   ...SUMMARY_FIXED_COLUMNS.slice(3)
 ];
-const EMPTY_FILTERS = Object.freeze({ businessUnit: '', productLine: '', productSeries: '' });
+const EMPTY_FILTERS = Object.freeze({ businessUnit: '', productLine: '', productSeries: '', actionConclusion: '' });
 
 function numberText(value, maximumFractionDigits = 2) {
   const number = Number(value);
@@ -134,6 +135,19 @@ function metricDataValue(row, metric) {
   return metric === '建议采购' ? row.purchaseGap : 0;
 }
 
+const SupplyPlanActionBadge = memo(function SupplyPlanActionBadge({ row }) {
+  const conclusion = row.actionConclusion || '正常流转';
+  return (
+    <span
+      className="supply-plan-action-badge"
+      style={{ '--supply-plan-action-color': row.actionColor || '#4caf50' }}
+      aria-label={`动作结论：${conclusion}`}
+    >
+      {conclusion}
+    </span>
+  );
+});
+
 const SupplyPlanMetricRows = memo(function SupplyPlanMetricRows({
   row,
   rowKey,
@@ -154,7 +168,7 @@ const SupplyPlanMetricRows = memo(function SupplyPlanMetricRows({
       key={`${rowKey}-${metric}`}
       className={`${metricIndex === 0 ? 'supply-plan-group-start ' : ''}${level === 'parent' ? 'supply-plan-parent-row' : 'supply-plan-child-row'} metric-row-${metricIndex}`}
     >
-      {metricIndex === 0 ? fixedColumns.slice(0, -1).map((column, index) => {
+      {metricIndex === 0 ? fixedColumns.slice(0, -2).map((column, index) => {
         let content = String(row[column.key] ?? '未匹配');
         if (column.key === 'safetyStockQty') content = numberText(row.safetyStockQty);
         if (level === 'parent' && column.key === 'businessUnit') content = '全量汇总';
@@ -180,7 +194,10 @@ const SupplyPlanMetricRows = memo(function SupplyPlanMetricRows({
           </td>
         );
       }) : null}
-      <td className="supply-plan-sticky metric-name" style={stickyStyle(fixedColumns, fixedColumns.length - 1)}>{metric}</td>
+      <td className="supply-plan-sticky metric-name" style={stickyStyle(fixedColumns, fixedColumns.length - 2)}>{metric}</td>
+      <td className="supply-plan-sticky supply-plan-action-column" style={stickyStyle(fixedColumns, fixedColumns.length - 1)}>
+        {metric === '建议采购' ? <SupplyPlanActionBadge row={row} /> : null}
+      </td>
       <td className={`numeric-cell supply-plan-data-column${metric === '库存剩余数量' && metricDataValue(row, metric) < 0 ? ' inventory-negative' : ''}`}>
         {numberText(metricDataValue(row, metric))}
       </td>
@@ -275,7 +292,7 @@ export default function SupplyPlanBoard({ token, active }) {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageDraft, setPageDraft] = useState('1');
   const [filters, setFilters] = useState(EMPTY_FILTERS);
-  const [filterOptions, setFilterOptions] = useState({ businessUnit: [], productLine: [], productSeries: [] });
+  const [filterOptions, setFilterOptions] = useState({ businessUnit: [], productLine: [], productSeries: [], actionConclusion: [] });
   const [pagination, setPagination] = useState({ page: 1, pageSize: SUPPLY_PLAN_PAGE_SIZE, totalItems: 0, totalPages: 1, totalChildItems: 0 });
   const [modelStates, setModelStates] = useState(() => new Map());
   const [horizonMonths, setHorizonMonths] = useState(6);
@@ -312,7 +329,7 @@ export default function SupplyPlanBoard({ token, active }) {
       setHorizonMonths(payload.horizonMonths || months);
       setParams(payload.params);
       setPagination(payload.pagination || { page: 1, pageSize: SUPPLY_PLAN_PAGE_SIZE, totalItems: 0, totalPages: 1, totalChildItems: 0 });
-      setFilterOptions(payload.filterOptions || { businessUnit: [], productLine: [], productSeries: [] });
+      setFilterOptions(payload.filterOptions || { businessUnit: [], productLine: [], productSeries: [], actionConclusion: [] });
       setCurrentPage(payload.pagination?.page || 1);
       setPageDraft(String(payload.pagination?.page || 1));
       setMeta({
@@ -516,7 +533,7 @@ export default function SupplyPlanBoard({ token, active }) {
         {SUPPLY_PLAN_FILTER_FIELDS.map(({ key, label }) => (
           <label key={key}>
             <span>{label}</span>
-            <select value={filters[key]} onChange={(event) => changeFilter(key, event.target.value)}>
+            <select aria-label={label} value={filters[key]} onChange={(event) => changeFilter(key, event.target.value)}>
               <option value="">全部{label}</option>
               {filterOptions[key].map((value) => <option key={value} value={value}>{value}</option>)}
             </select>

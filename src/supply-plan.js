@@ -44,8 +44,10 @@ export function buildSupplyPlanWeeks(months = 6, now = new Date()) {
 export const SUPPLY_PLAN_FILTER_FIELDS = Object.freeze([
   { key: 'businessUnit', label: '事业部' },
   { key: 'productLine', label: '产品线' },
-  { key: 'productSeries', label: '系列' }
+  { key: 'productSeries', label: '系列' },
+  { key: 'actionConclusion', label: '动作结论' }
 ]);
+const ACTION_CONCLUSION_ORDER = ['正常流转', '加急补货', '调整计划', '停采观察'];
 
 function text(value) {
   return String(value ?? '').normalize('NFKC').trim();
@@ -145,6 +147,7 @@ export function matchesSupplyPlanFilters(row, filters = {}, omit = '') {
 
 export function buildSupplyPlanFilterOptions(rows = [], filters = {}) {
   return Object.fromEntries(SUPPLY_PLAN_FILTER_FIELDS.map(({ key }) => {
+    if (key === 'actionConclusion') return [key, ACTION_CONCLUSION_ORDER];
     const values = new Set();
     rows.forEach((row) => {
       if (!matchesSupplyPlanFilters(row, filters, key)) return;
