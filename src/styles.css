@@ -8066,6 +8066,12 @@ th {
   margin: 0;
 }
 
+.supply-plan-title-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .supply-plan-title-row p,
 .supply-plan-section-heading p,
 .supply-plan-formula-note {

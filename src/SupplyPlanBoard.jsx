@@ -1,15 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import * as XLSX from 'xlsx';
+import { useEffect, useMemo, useState } from 'react';
 import {
   SUPPLY_PLAN_FILTER_FIELDS,
   SUPPLY_PLAN_PAGE_SIZE,
   SUPPLY_PLAN_ROW_TYPES,
   SUPPLY_PLAN_WEEKS,
-  applySupplyPlanImport,
   buildSupplyPlanFilterOptions,
   calculateSupplyPlanRow,
   filterSupplyPlanRows,
-  parseSupplyPlanWorksheet,
   supplyPlanRowKey
 } from './supply-plan.js';
 
@@ -160,8 +157,6 @@ export default function SupplyPlanBoard({ token, active }) {
   const [rows, setRows] = useState([]);
   const [params, setParams] = useState(null);
   const [meta, setMeta] = useState({ updatedBy: '', updatedAt: '', generatedAt: '' });
-  const [forecasts, setForecasts] = useState({});
-  const [safetyOverrides, setSafetyOverrides] = useState({});
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loadAttempted, setLoadAttempted] = useState(false);
@@ -169,8 +164,6 @@ export default function SupplyPlanBoard({ token, active }) {
   const [message, setMessage] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [filters, setFilters] = useState(EMPTY_FILTERS);
-  const forecastInputRef = useRef(null);
-  const safetyInputRef = useRef(null);
 
   async function loadSummary({ manual = false } = {}) {
     setLoading(true);
@@ -232,34 +225,14 @@ export default function SupplyPlanBoard({ token, active }) {
     }
   }
 
-  async function importWorkbook(file, mode) {
-    if (!file) return;
-    setError('');
-    try {
-      const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
-      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-      if (!firstSheet) throw new Error('导入文件没有可读取的工作表');
-      const aoa = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: '', raw: true, blankrows: false });
-      const parsed = parseSupplyPlanWorksheet(aoa, { mode });
-      const applied = applySupplyPlanImport(rows, parsed, forecasts, safetyOverrides);
-      setForecasts(applied.forecasts);
-      setSafetyOverrides(applied.safetyOverrides);
-      const label = mode === 'forecast' ? '销售预测' : '安全库存';
-      setMessage(`${label}导入完成：更新 ${applied.stats.updatedSkuRows} 个SKU行，未匹配 ${applied.stats.unmatchedImportRows} 行${applied.stats.ignoredWeekColumns ? `，忽略超出W52的 ${applied.stats.ignoredWeekColumns} 个周列` : ''}。`);
-    } catch (importError) {
-      setError(`${mode === 'forecast' ? '销售预测' : '安全库存'}导入失败：${importError.message}`);
-    }
-  }
-
   const calculatedRows = useMemo(() => rows.map((row) => {
-    const rowKey = supplyPlanRowKey(row);
     const safetyDays = params?.channels?.[row.channelKey]?.safetyDays ?? row.safetyDays;
     return calculateSupplyPlanRow(
       { ...row, safetyDays },
-      forecasts[rowKey] || [],
-      Object.hasOwn(safetyOverrides, rowKey) ? safetyOverrides[rowKey] : null
+      [],
+      null
     );
-  }), [rows, params, forecasts, safetyOverrides]);
+  }), [rows, params]);
 
   const filterOptions = useMemo(
     () => buildSupplyPlanFilterOptions(calculatedRows, filters),
@@ -303,8 +276,11 @@ export default function SupplyPlanBoard({ token, active }) {
     <div className="panel supply-plan-board">
       <div className="supply-plan-title-row">
         <div>
-          <h2>供应计划工具</h2>
-          <p>库存来源：当前服务器库存汇总；周预测与安全库存覆盖仅保留在本次页面会话。</p>
+          <div className="supply-plan-title-heading">
+            <h2>供应计划工具</h2>
+            <button type="button" className="primary compact-button" disabled={loading} onClick={() => loadSummary({ manual: true })}>{loading ? '重新计算中...' : '重新计算'}</button>
+          </div>
+          <p>库存来源：当前服务器库存汇总；点击“重新计算”读取最新数据。</p>
         </div>
         <span>{meta.generatedAt ? `生成时间：${timestampText(meta.generatedAt)}` : ''}</span>
       </div>
@@ -312,17 +288,6 @@ export default function SupplyPlanBoard({ token, active }) {
       {params ? <RouteSettings params={params} saving={saving} meta={meta} onChange={changeParam} onSave={saveParams} /> : null}
 
       <div className="toolbar supply-plan-toolbar">
-        <button type="button" disabled={loading} onClick={() => loadSummary({ manual: true })}>{loading ? '重算中...' : '重算'}</button>
-        <button type="button" onClick={() => forecastInputRef.current?.click()}>导入销售预测</button>
-        <button type="button" onClick={() => safetyInputRef.current?.click()}>导入安全库存</button>
-        <input ref={forecastInputRef} type="file" accept=".xlsx,.xls,.csv" hidden onChange={(event) => {
-          importWorkbook(event.target.files?.[0], 'forecast');
-          event.target.value = '';
-        }} />
-        <input ref={safetyInputRef} type="file" accept=".xlsx,.xls,.csv" hidden onChange={(event) => {
-          importWorkbook(event.target.files?.[0], 'safety');
-          event.target.value = '';
-        }} />
         <span className="section-count">当前显示 {filteredRows.length} / {calculatedRows.length} 个事业部＋物料编码</span>
       </div>
 
