@@ -209,7 +209,7 @@ const UNASSIGNED_PURCHASE_OWNER = '未分配采购下单人';
 const app = express();
 const UPLOAD_LIMIT_BYTES = 100 * 1024 * 1024;
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: UPLOAD_LIMIT_BYTES } });
-const kingdeeUploadDir = path.join(os.tmpdir(), 'gendanjindu-kingdee-uploads');
+const kingdeeUploadDir = path.join(os.tmpdir(), 'beihuochuhuojihua-uploads');
 fs.mkdirSync(kingdeeUploadDir, { recursive: true });
 fs.readdirSync(kingdeeUploadDir, { withFileTypes: true }).forEach((entry) => {
   if (entry.isFile()) fs.rmSync(path.join(kingdeeUploadDir, entry.name), { force: true });
@@ -2530,15 +2530,15 @@ app.use((err, req, res, next) => {
 });
 
 const distDir = path.join(rootDir, 'dist');
-app.use('/gendanjindu/assets', (_req, res, next) => {
+app.use('/beihuochuhuojihua/assets', (_req, res, next) => {
   res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
   next();
 });
-app.use('/gendanjindu', express.static(distDir));
+app.use('/beihuochuhuojihua', express.static(distDir));
 app.use(express.static(distDir));
-app.get(/^\/gendanjindu\/(?!api).*/, (req, res) => res.sendFile(path.join(distDir, 'index.html')));
+app.get(/^\/beihuochuhuojihua\/(?!api).*/, (req, res) => res.sendFile(path.join(distDir, 'index.html')));
 app.get(/^\/(?!api).*/, (req, res) => res.sendFile(path.join(distDir, 'index.html')));
 
 await initDatabase();app.listen(port, () => {
-  console.log(`Gendanjindu server running at http://localhost:${port}`);
+  console.log(`Beihuochuhuojihua server running at http://localhost:${port}`);
 });
