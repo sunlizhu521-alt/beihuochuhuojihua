@@ -49,6 +49,29 @@ export const SUPPLY_PLAN_FILTER_FIELDS = Object.freeze([
 ]);
 const ACTION_CONCLUSION_ORDER = ['正常流转', '加急补货', '调整计划', '停采观察'];
 
+export function supplyPlanVirtualWindow(items = [], scrollTop = 0, viewportHeight = 0, overscanHeight = 0) {
+  let offset = 0;
+  const layout = items.map((item) => {
+    const height = Math.max(1, Number(item.height) || 1);
+    const entry = { item, top: offset, height };
+    offset += height;
+    return entry;
+  });
+  const totalHeight = offset;
+  const visibleTop = Math.max(0, Number(scrollTop) - Number(overscanHeight));
+  const visibleBottom = Number(scrollTop) + Number(viewportHeight) + Number(overscanHeight);
+  let start = layout.findIndex((entry) => entry.top + entry.height >= visibleTop);
+  if (start < 0) start = Math.max(0, layout.length - 1);
+  let end = start;
+  while (end < layout.length && layout[end].top <= visibleBottom) end += 1;
+  const visible = layout.slice(start, end);
+  const beforeHeight = visible[0]?.top || 0;
+  const afterHeight = visible.length
+    ? Math.max(0, totalHeight - (visible.at(-1).top + visible.at(-1).height))
+    : totalHeight;
+  return { visible: visible.map((entry) => entry.item), beforeHeight, afterHeight, totalHeight };
+}
+
 function text(value) {
   return String(value ?? '').normalize('NFKC').trim();
 }

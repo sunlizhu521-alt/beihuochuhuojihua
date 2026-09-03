@@ -8300,6 +8300,14 @@ th {
   height: 32px;
 }
 
+.supply-plan-calculating {
+  align-self: center;
+  color: #205e9c;
+  font-size: .75rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
 .supply-plan-table-wrap {
   max-height: 68vh;
   overflow: auto;
@@ -8497,6 +8505,12 @@ th {
   border-right: 0;
   background: #f8fafc;
   pointer-events: none;
+}
+
+.supply-plan-table .supply-plan-virtual-spacer td {
+  padding: 0;
+  border: 0;
+  background: transparent;
 }
 
 .supply-plan-table thead .supply-plan-week-spacer {

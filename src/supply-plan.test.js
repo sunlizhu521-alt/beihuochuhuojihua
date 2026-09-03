@@ -9,7 +9,8 @@ import {
   groupSupplyPlanRows,
   parseSupplyPlanWorksheet,
   SUPPLY_PLAN_ROW_TYPES,
-  supplyPlanRowKey
+  supplyPlanRowKey,
+  supplyPlanVirtualWindow
 } from './supply-plan.js';
 
 const rows = [
@@ -126,6 +127,16 @@ test('供应计划固定使用六个指标', () => {
   assert.deepEqual(SUPPLY_PLAN_ROW_TYPES, [
     '销售预测', '未交付', '在途', '在库', '预测剩余库存', '建议采购'
   ]);
+});
+
+test('供应计划竖向虚拟窗口只保留可视区及前后缓冲行', () => {
+  const items = Array.from({ length: 100 }, (_, index) => ({ key: index, height: 174 }));
+  const windowed = supplyPlanVirtualWindow(items, 3480, 696, 1740);
+  assert.ok(windowed.visible.length < items.length);
+  assert.ok(windowed.visible.some((item) => item.key === 20));
+  assert.ok(windowed.beforeHeight > 0);
+  assert.ok(windowed.afterHeight > 0);
+  assert.equal(windowed.beforeHeight + windowed.afterHeight + windowed.visible.length * 174, windowed.totalHeight);
 });
 
 test('供应计划按产品型号生成父项并汇总事业部物料子项', () => {

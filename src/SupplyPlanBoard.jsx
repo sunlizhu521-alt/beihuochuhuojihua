@@ -1,10 +1,11 @@
-import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   SUPPLY_PLAN_FILTER_FIELDS,
   SUPPLY_PLAN_PAGE_SIZE,
   SUPPLY_PLAN_ROW_TYPES,
   buildSupplyPlanWeeks,
-  supplyPlanRowKey
+  supplyPlanRowKey,
+  supplyPlanVirtualWindow
 } from './supply-plan.js';
 import { API } from './api-base.js';
 
@@ -24,6 +25,10 @@ const PERIOD_FIELDS = [
 const HORIZON_MONTHS = [6, 9, 12, 15, 18, 21, 24];
 const WEEK_COLUMN_WIDTH = 72;
 const WEEK_OVERSCAN = 3;
+const FILTER_DEBOUNCE_MS = 300;
+const METRIC_BLOCK_HEIGHT = 174;
+const STATUS_ROW_HEIGHT = 44;
+const VERTICAL_OVERSCAN_HEIGHT = METRIC_BLOCK_HEIGHT * 10;
 const SUMMARY_FIXED_COLUMNS = [
   { key: 'productLine', label: '产品线', width: 92 },
   { key: 'productSeries', label: '系列', width: 92 },
@@ -46,6 +51,14 @@ const EXPANDED_FIXED_COLUMNS = [
   ...SUMMARY_FIXED_COLUMNS.slice(3)
 ];
 const EMPTY_FILTERS = Object.freeze({ businessUnit: '', productLine: '', productSeries: '', actionConclusion: '' });
+
+function filtersEqual(left, right) {
+  return SUPPLY_PLAN_FILTER_FIELDS.every(({ key }) => left[key] === right[key]);
+}
+
+function detailCacheKey(group, horizonMonths, filterQuery) {
+  return `${horizonMonths}\u001f${new URLSearchParams(filterQuery)}\u001f${group.modelKey}`;
+}
 
 function numberText(value, maximumFractionDigits = 2) {
   const number = Number(value);
@@ -298,19 +311,46 @@ export default function SupplyPlanBoard({ token, active }) {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageDraft, setPageDraft] = useState('1');
   const [filters, setFilters] = useState(EMPTY_FILTERS);
+  const [filterDrafts, setFilterDrafts] = useState(EMPTY_FILTERS);
+  const [filterDebouncing, setFilterDebouncing] = useState(false);
   const [filterOptions, setFilterOptions] = useState({ businessUnit: [], productLine: [], productSeries: [], actionConclusion: [] });
   const [pagination, setPagination] = useState({ page: 1, pageSize: SUPPLY_PLAN_PAGE_SIZE, totalItems: 0, totalPages: 1, totalChildItems: 0 });
   const [modelStates, setModelStates] = useState(() => new Map());
   const [horizonMonths, setHorizonMonths] = useState(6);
   const [weeks, setWeeks] = useState(() => buildSupplyPlanWeeks(6));
   const [visibleWeekRange, setVisibleWeekRange] = useState({ start: 0, end: 14 });
+  const [verticalViewport, setVerticalViewport] = useState({ scrollTop: 0, height: 700 });
   const modelStatesRef = useRef(modelStates);
+  const modelDetailCacheRef = useRef(new Map());
   const summaryRequestRef = useRef(0);
   const scrollFrameRef = useRef(0);
+  const tableWrapRef = useRef(null);
 
   useEffect(() => {
     modelStatesRef.current = modelStates;
   }, [modelStates]);
+
+  const resetTableScroll = useCallback(() => {
+    if (tableWrapRef.current) tableWrapRef.current.scrollTop = 0;
+    setVerticalViewport((current) => current.scrollTop === 0 ? current : { ...current, scrollTop: 0 });
+  }, []);
+
+  useEffect(() => {
+    if (!filterDebouncing || filtersEqual(filterDrafts, filters)) {
+      if (filterDebouncing) setFilterDebouncing(false);
+      return undefined;
+    }
+    const timeoutId = window.setTimeout(() => {
+      setFilters(filterDrafts);
+      setCurrentPage(1);
+      setPageDraft('1');
+      resetTableScroll();
+      modelStatesRef.current = new Map();
+      setModelStates(new Map());
+      setFilterDebouncing(false);
+    }, FILTER_DEBOUNCE_MS);
+    return () => window.clearTimeout(timeoutId);
+  }, [filterDebouncing, filterDrafts, filters, resetTableScroll]);
 
   const filterQuery = useMemo(() => Object.fromEntries(
     Object.entries(filters).filter(([, value]) => value)
@@ -319,6 +359,7 @@ export default function SupplyPlanBoard({ token, active }) {
   const loadSummary = useCallback(async ({ manual = false, page = currentPage, months = horizonMonths } = {}) => {
     const requestId = summaryRequestRef.current + 1;
     summaryRequestRef.current = requestId;
+    if (manual) modelDetailCacheRef.current.clear();
     setLoading(true);
     setError('');
     try {
@@ -382,6 +423,7 @@ export default function SupplyPlanBoard({ token, active }) {
       setParams(payload.params);
       setMeta((current) => ({ ...current, updatedBy: payload.updatedBy || '', updatedAt: payload.updatedAt || '' }));
       setMessage(`路由时间已保存到腾讯云，保存人：${payload.updatedBy || '未知用户'}。`);
+      modelDetailCacheRef.current.clear();
       await loadSummary({ page: currentPage, months: horizonMonths });
     } catch (requestError) {
       setError(requestError.message);
@@ -432,6 +474,7 @@ export default function SupplyPlanBoard({ token, active }) {
     setHorizonMonths(months);
     setCurrentPage(1);
     setPageDraft('1');
+    resetTableScroll();
     modelStatesRef.current = new Map();
     setModelStates(new Map());
   }
@@ -444,6 +487,16 @@ export default function SupplyPlanBoard({ token, active }) {
       next.set(group.modelKey, { ...current, expanded: !current.expanded });
       modelStatesRef.current = next;
       setModelStates(next);
+      return;
+    }
+    const cacheKey = detailCacheKey(group, horizonMonths, filterQuery);
+    const cachedRows = modelDetailCacheRef.current.get(cacheKey);
+    if (cachedRows) {
+      const next = new Map(modelStatesRef.current);
+      next.set(group.modelKey, { expanded: true, loading: false, rows: cachedRows, error: '' });
+      modelStatesRef.current = next;
+      setModelStates(next);
+      setMessage(`型号 ${group.model} 明细已从缓存加载。`);
       return;
     }
     const loadingState = new Map(modelStatesRef.current);
@@ -459,6 +512,10 @@ export default function SupplyPlanBoard({ token, active }) {
         ...filterQuery
       });
       const payload = await apiRequest(`/api/supply-plan/model-detail?${query}`, token);
+      modelDetailCacheRef.current.set(cacheKey, payload.rows || []);
+      while (modelDetailCacheRef.current.size > 300) {
+        modelDetailCacheRef.current.delete(modelDetailCacheRef.current.keys().next().value);
+      }
       const next = new Map(modelStatesRef.current);
       next.set(group.modelKey, { expanded: true, loading: false, rows: payload.rows || [], error: '' });
       modelStatesRef.current = next;
@@ -472,15 +529,57 @@ export default function SupplyPlanBoard({ token, active }) {
     }
   }, [filterQuery, horizonMonths, token]);
 
-  const showChildColumns = rows.some((group) => modelStates.get(group.modelKey)?.expanded);
+  const flattenedRows = useMemo(() => rows.flatMap((group) => {
+    const detailState = modelStates.get(group.modelKey);
+    const expanded = Boolean(detailState?.expanded);
+    const items = [{
+      key: `parent-${group.modelKey}`,
+      kind: 'data',
+      row: group,
+      level: 'parent',
+      expanded,
+      childCount: group.childCount,
+      detailLoading: Boolean(detailState?.loading),
+      height: METRIC_BLOCK_HEIGHT
+    }];
+    if (!expanded) return items;
+    (detailState?.rows || []).forEach((child) => items.push({
+      key: `child-${group.modelKey}-${supplyPlanRowKey(child)}`,
+      kind: 'data',
+      row: child,
+      level: 'child',
+      expanded: false,
+      childCount: 0,
+      detailLoading: false,
+      height: METRIC_BLOCK_HEIGHT
+    }));
+    if (detailState?.loading || detailState?.error) items.push({
+      key: `status-${group.modelKey}`,
+      kind: 'status',
+      error: detailState.error || '',
+      height: STATUS_ROW_HEIGHT
+    });
+    return items;
+  }), [modelStates, rows]);
+
+  const showChildColumns = useMemo(
+    () => flattenedRows.some((item) => item.level === 'child' || item.expanded),
+    [flattenedRows]
+  );
   const fixedColumns = showChildColumns ? EXPANDED_FIXED_COLUMNS : SUMMARY_FIXED_COLUMNS;
   const fixedWidth = useMemo(() => fixedColumns.reduce((sum, column) => sum + column.width, 0) + 82, [fixedColumns]);
   const visibleWeeks = useMemo(
     () => weeks.slice(visibleWeekRange.start, visibleWeekRange.end),
     [visibleWeekRange, weeks]
   );
+  const virtualRows = useMemo(() => supplyPlanVirtualWindow(
+    flattenedRows,
+    verticalViewport.scrollTop,
+    verticalViewport.height,
+    VERTICAL_OVERSCAN_HEIGHT
+  ), [flattenedRows, verticalViewport.height, verticalViewport.scrollTop]);
 
-  const handleWeekScroll = useCallback((event) => {
+  const handleTableScroll = useCallback((event) => {
     const element = event.currentTarget;
     cancelAnimationFrame(scrollFrameRef.current);
     scrollFrameRef.current = requestAnimationFrame(() => {
@@ -489,26 +588,29 @@ export default function SupplyPlanBoard({ token, active }) {
       const visibleCount = Math.ceil(element.clientWidth / WEEK_COLUMN_WIDTH) + WEEK_OVERSCAN * 2;
       const end = Math.min(weeks.length, start + visibleCount);
       setVisibleWeekRange((current) => current.start === start && current.end === end ? current : { start, end });
+      setVerticalViewport((current) => (
+        current.scrollTop === element.scrollTop && current.height === element.clientHeight
+          ? current
+          : { scrollTop: element.scrollTop, height: element.clientHeight }
+      ));
     });
   }, [fixedWidth, weeks.length]);
 
   useEffect(() => () => cancelAnimationFrame(scrollFrameRef.current), []);
 
   function changeFilter(key, value) {
-    setFilters((current) => ({ ...current, [key]: value }));
-    setCurrentPage(1);
-    setPageDraft('1');
-    modelStatesRef.current = new Map();
-    setModelStates(new Map());
+    setFilterDrafts((current) => ({ ...current, [key]: value }));
+    setFilterDebouncing(true);
   }
 
   function goToPage(page) {
     const safePage = Math.min(pagination.totalPages, Math.max(1, Number(page) || 1));
     setCurrentPage(safePage);
     setPageDraft(String(safePage));
+    resetTableScroll();
   }
 
-  if (!params && loading) return <div className="loading-fallback">正在读取供应计划数据...</div>;
+  if (!params && loading) return <div className="loading-fallback">正在计算供应计划...</div>;
 
   return (
     <div className="panel supply-plan-board">
@@ -538,25 +640,34 @@ export default function SupplyPlanBoard({ token, active }) {
         {SUPPLY_PLAN_FILTER_FIELDS.map(({ key, label }) => (
           <label key={key}>
             <span>{label}</span>
-            <select aria-label={label} value={filters[key]} onChange={(event) => changeFilter(key, event.target.value)}>
+            <select aria-label={label} value={filterDrafts[key]} onChange={(event) => changeFilter(key, event.target.value)}>
               <option value="">全部{label}</option>
               {filterOptions[key].map((value) => <option key={value} value={value}>{value}</option>)}
             </select>
           </label>
         ))}
-        <button type="button" className="ghost" disabled={!Object.values(filters).some(Boolean)} onClick={() => {
+        <button type="button" className="ghost" disabled={!Object.values(filterDrafts).some(Boolean)} onClick={() => {
+          setFilterDrafts(EMPTY_FILTERS);
           setFilters(EMPTY_FILTERS);
+          setFilterDebouncing(false);
           setCurrentPage(1);
           setPageDraft('1');
+          resetTableScroll();
           modelStatesRef.current = new Map();
           setModelStates(new Map());
         }}>清空筛选</button>
+        {filterDebouncing ? <span className="supply-plan-calculating" role="status">计算中...</span> : null}
       </div>
 
       {message ? <p className="message">{message}</p> : null}
       {error ? <p className="message error">{error}</p> : null}
 
-      <div className="supply-plan-table-wrap" onScroll={handleWeekScroll}>
+      <div
+        ref={tableWrapRef}
+        className="supply-plan-table-wrap"
+        style={{ contain: 'layout paint' }}
+        onScroll={handleTableScroll}
+      >
         <table className="supply-plan-table">
           <thead>
             <tr>
@@ -572,41 +683,38 @@ export default function SupplyPlanBoard({ token, active }) {
             </tr>
           </thead>
           <tbody>
-            {rows.map((group) => {
-              const detailState = modelStates.get(group.modelKey);
-              const expanded = Boolean(detailState?.expanded);
-              return (
-                <Fragment key={group.modelKey}>
-                  <SupplyPlanMetricRows
-                    row={group}
-                    rowKey={`parent-${group.modelKey}`}
-                    fixedColumns={fixedColumns}
-                    visibleWeeks={visibleWeeks}
-                    weekStart={visibleWeekRange.start}
-                    totalWeeks={weeks.length}
-                    level="parent"
-                    expanded={expanded}
-                    childCount={group.childCount}
-                    detailLoading={detailState?.loading}
-                    onToggle={toggleModel}
-                  />
-                  {expanded ? detailState?.rows?.map((child) => (
-                    <SupplyPlanMetricRows
-                      key={supplyPlanRowKey(child)}
-                      row={child}
-                      rowKey={`child-${group.modelKey}-${supplyPlanRowKey(child)}`}
-                      fixedColumns={fixedColumns}
-                      visibleWeeks={visibleWeeks}
-                      weekStart={visibleWeekRange.start}
-                      totalWeeks={weeks.length}
-                      level="child"
-                    />
-                  )) : null}
-                  {expanded && detailState?.loading ? <tr><td className="supply-plan-detail-status" colSpan={fixedColumns.length + visibleWeeks.length + 3}>正在读取该型号明细…</td></tr> : null}
-                  {expanded && detailState?.error ? <tr><td className="supply-plan-detail-status error" colSpan={fixedColumns.length + visibleWeeks.length + 3}>{detailState.error}</td></tr> : null}
-                </Fragment>
-              );
-            })}
+            {virtualRows.beforeHeight ? (
+              <tr className="supply-plan-virtual-spacer" aria-hidden="true">
+                <td colSpan={fixedColumns.length + visibleWeeks.length + 3} style={{ height: virtualRows.beforeHeight }} />
+              </tr>
+            ) : null}
+            {virtualRows.visible.map((item) => item.kind === 'status' ? (
+              <tr key={item.key}>
+                <td className={`supply-plan-detail-status${item.error ? ' error' : ''}`} colSpan={fixedColumns.length + visibleWeeks.length + 3}>
+                  {item.error || '正在读取该型号明细…'}
+                </td>
+              </tr>
+            ) : (
+              <SupplyPlanMetricRows
+                key={item.key}
+                row={item.row}
+                rowKey={item.key}
+                fixedColumns={fixedColumns}
+                visibleWeeks={visibleWeeks}
+                weekStart={visibleWeekRange.start}
+                totalWeeks={weeks.length}
+                level={item.level}
+                expanded={item.expanded}
+                childCount={item.childCount}
+                detailLoading={item.detailLoading}
+                onToggle={toggleModel}
+              />
+            ))}
+            {virtualRows.afterHeight ? (
+              <tr className="supply-plan-virtual-spacer" aria-hidden="true">
+                <td colSpan={fixedColumns.length + visibleWeeks.length + 3} style={{ height: virtualRows.afterHeight }} />
+              </tr>
+            ) : null}
             {!rows.length ? <tr><td className="empty-cell" colSpan={fixedColumns.length + 1 + visibleWeeks.length}>暂无可展示的供应计划数据</td></tr> : null}
           </tbody>
         </table>
