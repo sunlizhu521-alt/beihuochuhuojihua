@@ -30,7 +30,7 @@ import {
   normalizeSupplyPlanParams
 } from './inventory-risk.js';
 import { buildInventoryRiskWorkbook } from './inventory-risk-export.js';
-import { buildSupplyPlanData } from './supply-plan.js';
+import { buildSupplyPlanData, paginateSupplyPlanData, supplyPlanModelDetail } from './supply-plan.js';
 
 
 import { buildStyledExcelBuffer } from '../shared/excel-export.js';
@@ -1444,6 +1444,7 @@ let inventoryRiskResultCache = { key: '', payload: null };
 const INVENTORY_RISK_SETTING_KEY = 'global';
 const BEI_HUO_GONG_JU_SETTING_KEY = 'beiHuoGongJu';
 let beiHuoGongJuResultCache = { key: '', payload: null };
+const supplyPlanResultCache = new Map();
 
 function currentInventoryRiskSettings() {
   const saved = get(
@@ -1600,6 +1601,26 @@ function inventoryRiskSourceVersion() {
   return all(
     'SELECT slot_id, file_name, updated_at, applied, length(rows_json) AS rows_size FROM dimension_files WHERE applied = 1 ORDER BY slot_id'
   ).map((row) => [row.slot_id, row.file_name, row.updated_at, row.applied, row.rows_size].join(':')).join('|');
+}
+
+function supplyPlanDataset(months) {
+  const settings = currentSupplyPlanSettings();
+  const sourceVersion = inventoryRiskSourceVersion();
+  const cacheKey = `${sourceVersion}\u001f${settings.updatedAt}\u001f${months}`;
+  if (supplyPlanResultCache.has(cacheKey)) {
+    return { payload: supplyPlanResultCache.get(cacheKey), settings };
+  }
+  const payload = buildSupplyPlanData({
+    inventorySummaryData: supplyPlanSourceData(),
+    dimensionData: supplyPlanDimensionData(),
+    supplyPlanSettings: settings.params,
+    months
+  });
+  supplyPlanResultCache.set(cacheKey, payload);
+  while (supplyPlanResultCache.size > 8) {
+    supplyPlanResultCache.delete(supplyPlanResultCache.keys().next().value);
+  }
+  return { payload, settings };
 }
 
 function inventoryRiskData(input = {}, { force = false } = {}) {
@@ -1915,22 +1936,46 @@ app.get('/api/inventory-risk/params', requireAuth, requirePage('inventoryRisk'),
 
 app.get('/api/supply-plan/summary', requireAuth, requirePage('supplyPlanBoard'), (req, res) => {
   try {
-    const settings = currentSupplyPlanSettings();
-    const payload = buildSupplyPlanData({
-      inventorySummaryData: supplyPlanSourceData(),
-      dimensionData: supplyPlanDimensionData(),
-      supplyPlanSettings: settings.params,
-      months: req.query.months
+    const months = req.query.horizonMonths ?? req.query.months;
+    const { payload, settings } = supplyPlanDataset(months);
+    const pagePayload = paginateSupplyPlanData(payload, {
+      page: req.query.page,
+      pageSize: req.query.pageSize,
+      filters: {
+        businessUnit: req.query.businessUnit,
+        productLine: req.query.productLine,
+        productSeries: req.query.productSeries
+      }
     });
     res.setHeader('Cache-Control', 'no-store');
     return res.json({
-      ...payload,
+      ...pagePayload,
       params: settings.params,
       updatedBy: settings.updatedBy,
       updatedAt: settings.updatedAt
     });
   } catch (error) {
     return res.status(400).json({ error: error.message || '供应计划数据生成失败' });
+  }
+});
+
+app.get('/api/supply-plan/model-detail', requireAuth, requirePage('supplyPlanBoard'), (req, res) => {
+  try {
+    const months = req.query.horizonMonths ?? req.query.months;
+    const { payload } = supplyPlanDataset(months);
+    const detail = supplyPlanModelDetail(payload, {
+      modelKey: req.query.modelKey,
+      model: req.query.model,
+      filters: {
+        businessUnit: req.query.businessUnit,
+        productLine: req.query.productLine,
+        productSeries: req.query.productSeries
+      }
+    });
+    res.setHeader('Cache-Control', 'no-store');
+    return res.json(detail);
+  } catch (error) {
+    return res.status(400).json({ error: error.message || '供应计划型号明细生成失败' });
   }
 });
 

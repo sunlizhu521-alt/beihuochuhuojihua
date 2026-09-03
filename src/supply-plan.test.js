@@ -73,6 +73,7 @@ test('采购缺口只用本周预测并扣减在库、在途和未交付', () =>
   assert.equal(calculated.forecastTotal, 77);
   assert.equal(calculated.dailyForecast, 1);
   assert.equal(calculated.safetyStockQty, 10);
+  assert.equal(calculated.inventoryRemainingQty, 0);
   assert.equal(calculated.purchaseGap, 7);
   const overridden = calculateSupplyPlanRow(source, forecast, 20);
   assert.equal(overridden.safetyStockQty, 20);
@@ -112,9 +113,9 @@ test('供应计划筛选选项按其他已选条件联动', () => {
   assert.deepEqual(options.productSeries, ['A系列']);
 });
 
-test('供应计划固定使用五个指标', () => {
+test('供应计划固定使用六个指标', () => {
   assert.deepEqual(SUPPLY_PLAN_ROW_TYPES, [
-    '销售预测', '未交付', '在途', '在库', '建议采购'
+    '销售预测', '未交付', '在途', '在库', '库存剩余数量', '建议采购'
   ]);
 });
 
@@ -124,19 +125,19 @@ test('供应计划按产品型号生成父项并汇总事业部物料子项', ()
       productLine: '护理床', productSeries: '星云系列', model: 'A1', businessUnit: '海外事业部',
       materialCode: '1002', sku: 'SKU-A-US', materialName: 'A1海外版', onHandQty: 10,
       inTransitQty: 3, undeliveredQty: 4, inventoryQty: 13, safetyStockQty: 20,
-      purchaseGap: 11, forecastTotal: 21, dailyForecast: 1, weeklyForecast: [7, 14]
+      purchaseGap: 11, inventoryRemainingQty: 6, forecastTotal: 21, dailyForecast: 1, weeklyForecast: [7, 14]
     },
     {
       productLine: '护理床', productSeries: '星云系列', model: 'A1', businessUnit: '国内事业部',
       materialCode: '1001', sku: 'SKU-A-CN', materialName: 'A1国内版', onHandQty: 5,
       inTransitQty: 2, undeliveredQty: 6, inventoryQty: 7, safetyStockQty: 8,
-      purchaseGap: 9, forecastTotal: 7, dailyForecast: 1, weeklyForecast: [3, 4]
+      purchaseGap: 9, inventoryRemainingQty: 4, forecastTotal: 7, dailyForecast: 1, weeklyForecast: [3, 4]
     },
     {
       productLine: '护理床', productSeries: '星云系列', model: 'A2', businessUnit: '国内事业部',
       materialCode: '2001', sku: 'SKU-B', materialName: 'A2', onHandQty: 1,
       inTransitQty: 0, undeliveredQty: 0, inventoryQty: 1, safetyStockQty: 2,
-      purchaseGap: 1, forecastTotal: 2, dailyForecast: 0, weeklyForecast: [1, 1]
+      purchaseGap: 1, inventoryRemainingQty: 0, forecastTotal: 2, dailyForecast: 0, weeklyForecast: [1, 1]
     }
   ];
   const groups = groupSupplyPlanRows(sourceRows, 2);
@@ -149,6 +150,7 @@ test('供应计划按产品型号生成父项并汇总事业部物料子项', ()
   assert.equal(groups[0].undeliveredQty, 10);
   assert.equal(groups[0].inventoryQty, 20);
   assert.equal(groups[0].safetyStockQty, 28);
+  assert.equal(groups[0].inventoryRemainingQty, 10);
   assert.equal(groups[0].purchaseGap, 20);
   assert.equal(groups[0].forecastTotal, 28);
   assert.deepEqual(groups[0].weeklyForecast, [10, 18]);

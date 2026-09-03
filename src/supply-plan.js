@@ -1,9 +1,10 @@
-export const SUPPLY_PLAN_PAGE_SIZE = 50;
+export const SUPPLY_PLAN_PAGE_SIZE = 100;
 export const SUPPLY_PLAN_ROW_TYPES = Object.freeze([
   '销售预测',
   '未交付',
   '在途',
   '在库',
+  '库存剩余数量',
   '建议采购'
 ]);
 
@@ -87,6 +88,7 @@ const SUPPLY_PLAN_SUM_FIELDS = Object.freeze([
   'forecastTotal',
   'dailyForecast',
   'safetyStockQty',
+  'inventoryRemainingQty',
   'purchaseGap'
 ]);
 
@@ -264,12 +266,16 @@ export function calculateSupplyPlanRow(row, forecast = row?.weeklyForecast || []
       - numberValue(row?.inTransitQty)
       - numberValue(row?.undeliveredQty)
   );
+  const inventoryRemainingQty = numberValue(row?.inTransitQty)
+    + numberValue(row?.onHandQty)
+    - numberValue(weeklyForecast[0]);
   return {
     ...row,
     weeklyForecast,
     forecastTotal,
     dailyForecast,
     safetyStockQty,
+    inventoryRemainingQty,
     purchaseGap
   };
 }

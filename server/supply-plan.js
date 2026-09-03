@@ -18,6 +18,10 @@ function businessUnitMaterialKey(businessUnit, materialCode) {
   return `${text(businessUnit)}\u001f${materialCodeValue(materialCode)}`;
 }
 
+function modelKeyValue(productLine, productSeries, model, fallback) {
+  return [productLine, productSeries, model || `__${fallback}`].map(text).join('\u001f');
+}
+
 function utcDate(value = new Date()) {
   const date = new Date(value);
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
@@ -140,6 +144,38 @@ export function supplyPlanChannel(siteValue = '') {
   return { key: 'domestic', label: '国内' };
 }
 
+export function supplyPlanModelKey(row = {}) {
+  return text(row.modelKey) || modelKeyValue(
+    row.productLine || '未匹配产品线',
+    row.productSeries || '未匹配系列',
+    row.model === '未匹配型号' ? '' : row.model,
+    row.sku || row.materialCode || '未匹配型号'
+  );
+}
+
+function withSupplyPlanCalculations(row) {
+  const weeklyForecast = Array.isArray(row.weeklyForecast) ? row.weeklyForecast.map(numberValue) : [];
+  const forecastTotal = weeklyForecast.reduce((sum, value) => sum + value, 0);
+  const dailyForecast = Math.round(numberValue(row.forecastDailyQty));
+  const safetyStockQty = dailyForecast * numberValue(row.safetyDays);
+  const currentWeekForecast = numberValue(weeklyForecast[0]);
+  return {
+    ...row,
+    weeklyForecast,
+    forecastTotal,
+    dailyForecast,
+    safetyStockQty,
+    inventoryRemainingQty: numberValue(row.inTransitQty) + numberValue(row.onHandQty) - currentWeekForecast,
+    purchaseGap: Math.max(
+      0,
+      safetyStockQty + currentWeekForecast
+        - numberValue(row.onHandQty)
+        - numberValue(row.inTransitQty)
+        - numberValue(row.undeliveredQty)
+    )
+  };
+}
+
 export function buildSupplyPlanData({
   inventorySummaryData = {},
   dimensionData = {},
@@ -244,15 +280,19 @@ export function buildSupplyPlanData({
     const forecastDaily = forecastDailyByItem.get(key) || { total: 0, days: 0 };
     const weekly = weeklyByItem.get(key) || new Map();
     const weeklyForecast = weeks.map((week) => numberValue(weekly.get(week.key)));
-    return {
+    const productLine = text(product.productLine) || '未匹配产品线';
+    const productSeries = text(product.productSeries) || '未匹配系列';
+    const model = text(product.model);
+    return withSupplyPlanCalculations({
       businessUnit: item.businessUnit,
       materialCode: item.materialCode,
       sku: item.sku || text(product.sku),
       skuName: item.skuName || text(product.materialName),
       materialName: item.skuName || text(product.materialName),
-      productLine: text(product.productLine) || '未匹配产品线',
-      productSeries: text(product.productSeries) || '未匹配系列',
-      model: text(product.model) || '未匹配型号',
+      productLine,
+      productSeries,
+      model: model || '未匹配型号',
+      modelKey: modelKeyValue(productLine, productSeries, model, item.sku || item.materialCode),
       salesRegion: text(product.salesRegion),
       pretaxPrice: numberValue(product.pretaxPrice),
       productLifecycle: text(feedback.productLifecycle || feedback.unifiedStage),
@@ -270,7 +310,7 @@ export function buildSupplyPlanData({
       forecastDailyQty: forecastDaily.days ? forecastDaily.total / forecastDaily.days : 0,
       weekForecasts: weeks.map((week, index) => ({ ...week, forecastQty: weeklyForecast[index] })),
       weeklyForecast
-    };
+    });
   }).sort((left, right) => (
     left.productLine.localeCompare(right.productLine, 'zh-CN')
     || left.productSeries.localeCompare(right.productSeries, 'zh-CN')
@@ -290,5 +330,116 @@ export function buildSupplyPlanData({
       undeliveredRows: undeliveredRows.length,
       forecastRows: forecastRows.length
     }
+  };
+}
+
+const MODEL_SUM_FIELDS = [
+  'onHandQty',
+  'inTransitQty',
+  'undeliveredQty',
+  'forecastTotal',
+  'dailyForecast',
+  'safetyStockQty',
+  'inventoryRemainingQty',
+  'purchaseGap'
+];
+
+const FILTER_FIELDS = ['businessUnit', 'productLine', 'productSeries'];
+
+function matchesFilters(row, filters = {}, omittedField = '') {
+  return FILTER_FIELDS.every((field) => (
+    field === omittedField || !text(filters[field]) || text(row[field]) === text(filters[field])
+  ));
+}
+
+function filterOptions(rows, filters) {
+  return Object.fromEntries(FILTER_FIELDS.map((field) => [field, [...new Set(rows
+    .filter((row) => matchesFilters(row, filters, field))
+    .map((row) => text(row[field]))
+    .filter(Boolean))].sort((left, right) => left.localeCompare(right, 'zh-CN'))]));
+}
+
+export function groupSupplyPlanModels(rows = [], weekCount = 0) {
+  const groups = new Map();
+  rows.forEach((row) => {
+    const key = supplyPlanModelKey(row);
+    const group = groups.get(key) || {
+      modelKey: key,
+      productLine: row.productLine,
+      productSeries: row.productSeries,
+      model: row.model,
+      businessUnit: '全量汇总',
+      materialCode: '',
+      sku: '',
+      skuName: '按型号汇总',
+      childCount: 0,
+      weeklyForecast: Array.from({ length: weekCount }, () => 0)
+    };
+    MODEL_SUM_FIELDS.forEach((field) => {
+      group[field] = numberValue(group[field]) + numberValue(row[field]);
+    });
+    group.weeklyForecast = group.weeklyForecast.map((value, index) => (
+      value + numberValue(row.weeklyForecast?.[index])
+    ));
+    group.childCount += 1;
+    groups.set(key, group);
+  });
+  return [...groups.values()].sort((left, right) => (
+    left.productLine.localeCompare(right.productLine, 'zh-CN')
+    || left.productSeries.localeCompare(right.productSeries, 'zh-CN')
+    || left.model.localeCompare(right.model, 'zh-CN', { numeric: true })
+  ));
+}
+
+export function paginateSupplyPlanData(payload, {
+  page = 1,
+  pageSize = 100,
+  filters = {}
+} = {}) {
+  const normalizedPageSize = Math.min(100, Math.max(1, Math.trunc(numberValue(pageSize)) || 100));
+  const filteredRows = payload.rows.filter((row) => matchesFilters(row, filters));
+  const models = groupSupplyPlanModels(filteredRows, payload.weeks.length);
+  const totalItems = models.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / normalizedPageSize));
+  const normalizedPage = Math.min(totalPages, Math.max(1, Math.trunc(numberValue(page)) || 1));
+  const start = (normalizedPage - 1) * normalizedPageSize;
+  return {
+    ...payload,
+    rows: models.slice(start, start + normalizedPageSize),
+    filterOptions: filterOptions(payload.rows, filters),
+    pagination: {
+      page: normalizedPage,
+      pageSize: normalizedPageSize,
+      totalItems,
+      totalPages,
+      totalChildItems: filteredRows.length
+    }
+  };
+}
+
+export function supplyPlanModelDetail(payload, {
+  modelKey = '',
+  model = '',
+  filters = {}
+} = {}) {
+  let resolvedKey = text(modelKey);
+  if (!resolvedKey && text(model)) {
+    const keys = [...new Set(payload.rows
+      .filter((row) => text(row.model) === text(model))
+      .map(supplyPlanModelKey))];
+    if (keys.length > 1) throw new Error('存在跨产品线或系列的同名型号，请使用 modelKey 查询');
+    resolvedKey = keys[0] || '';
+  }
+  if (!resolvedKey) throw new Error('型号参数不能为空');
+  const rows = payload.rows.filter((row) => (
+    supplyPlanModelKey(row) === resolvedKey && matchesFilters(row, filters)
+  ));
+  if (!rows.length) throw new Error('未找到对应型号的供应计划明细');
+  return {
+    ok: true,
+    modelKey: resolvedKey,
+    horizonMonths: payload.horizonMonths,
+    weeks: payload.weeks,
+    rows
   };
 }

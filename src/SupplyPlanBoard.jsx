@@ -1,13 +1,9 @@
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   SUPPLY_PLAN_FILTER_FIELDS,
   SUPPLY_PLAN_PAGE_SIZE,
   SUPPLY_PLAN_ROW_TYPES,
-  buildSupplyPlanFilterOptions,
   buildSupplyPlanWeeks,
-  calculateSupplyPlanRow,
-  filterSupplyPlanRows,
-  groupSupplyPlanRows,
   supplyPlanRowKey
 } from './supply-plan.js';
 import { API } from './api-base.js';
@@ -26,6 +22,8 @@ const PERIOD_FIELDS = [
   ['contractSigningDays', '合同签订']
 ];
 const HORIZON_MONTHS = [6, 9, 12, 15, 18, 21, 24];
+const WEEK_COLUMN_WIDTH = 72;
+const WEEK_OVERSCAN = 3;
 const SUMMARY_FIXED_COLUMNS = [
   { key: 'productLine', label: '产品线', width: 92 },
   { key: 'productSeries', label: '系列', width: 92 },
@@ -101,6 +99,7 @@ function stickyStyle(columns, index) {
 
 function metricWeekValue(row, metric, weekIndex) {
   if (metric === '销售预测') return row.weeklyForecast?.[weekIndex] || 0;
+  if (metric === '库存剩余数量') return weekIndex === 0 ? row.inventoryRemainingQty : null;
   if (weekIndex > 0) return 0;
   if (metric === '未交付') return row.undeliveredQty;
   if (metric === '在途') return row.inTransitQty;
@@ -113,10 +112,25 @@ function metricDataValue(row, metric) {
   if (metric === '未交付') return row.undeliveredQty;
   if (metric === '在途') return row.inTransitQty;
   if (metric === '在库') return row.onHandQty;
+  if (metric === '库存剩余数量') return row.inventoryRemainingQty;
   return metric === '建议采购' ? row.purchaseGap : 0;
 }
 
-function SupplyPlanMetricRows({ row, rowKey, fixedColumns, weeks, level, expanded = false, childCount = 0, onToggle }) {
+const SupplyPlanMetricRows = memo(function SupplyPlanMetricRows({
+  row,
+  rowKey,
+  fixedColumns,
+  visibleWeeks,
+  weekStart,
+  totalWeeks,
+  level,
+  expanded = false,
+  childCount = 0,
+  detailLoading = false,
+  onToggle
+}) {
+  const beforeWidth = weekStart * WEEK_COLUMN_WIDTH;
+  const afterWidth = Math.max(0, totalWeeks - weekStart - visibleWeeks.length) * WEEK_COLUMN_WIDTH;
   return SUPPLY_PLAN_ROW_TYPES.map((metric, metricIndex) => (
     <tr
       key={`${rowKey}-${metric}`}
@@ -139,28 +153,34 @@ function SupplyPlanMetricRows({ row, rowKey, fixedColumns, weeks, level, expande
             title={String(content)}
           >
             {level === 'parent' && column.key === 'model' ? (
-              <button type="button" className="supply-plan-model-toggle" aria-expanded={expanded} aria-label={`${expanded ? '收起' : '展开'}型号 ${row.model}`} onClick={onToggle}>
+              <button type="button" className="supply-plan-model-toggle" aria-expanded={expanded} aria-label={`${expanded ? '收起' : '展开'}型号 ${row.model}`} onClick={() => onToggle(row)}>
                 <span aria-hidden="true">{expanded ? '▾' : '▸'}</span>
                 <strong>{content}</strong>
-                <small>{childCount} 项</small>
+                <small>{detailLoading ? '读取中…' : `${childCount} 项`}</small>
               </button>
             ) : content}
           </td>
         );
       }) : null}
       <td className="supply-plan-sticky metric-name" style={stickyStyle(fixedColumns, fixedColumns.length - 1)}>{metric}</td>
-      <td className="numeric-cell supply-plan-data-column">{numberText(metricDataValue(row, metric))}</td>
-      {weeks.map((week, weekIndex) => {
+      <td className={`numeric-cell supply-plan-data-column${metric === '库存剩余数量' && metricDataValue(row, metric) < 0 ? ' inventory-negative' : ''}`}>
+        {numberText(metricDataValue(row, metric))}
+      </td>
+      {beforeWidth ? <td aria-hidden="true" className="supply-plan-week-spacer" style={{ width: beforeWidth, minWidth: beforeWidth }} /> : null}
+      {visibleWeeks.map((week, visibleIndex) => {
+        const weekIndex = weekStart + visibleIndex;
         const value = metricWeekValue(row, metric, weekIndex);
+        const negativeRemaining = metric === '库存剩余数量' && value !== null && value < 0;
         return (
-          <td key={week.key} className={`numeric-cell${metric === '建议采购' && value > 0 ? ' gap-positive' : ''}`}>
-            {numberText(value)}
+          <td key={week.key} className={`numeric-cell${metric === '建议采购' && value > 0 ? ' gap-positive' : ''}${negativeRemaining ? ' inventory-negative' : ''}`}>
+            {value === null ? '' : numberText(value)}
           </td>
         );
       })}
+      {afterWidth ? <td aria-hidden="true" className="supply-plan-week-spacer" style={{ width: afterWidth, minWidth: afterWidth }} /> : null}
     </tr>
   ));
-}
+});
 
 function RouteSettings({ params, saving, meta, horizonMonths, onHorizonChange, onChange, onSave }) {
   return (
@@ -231,48 +251,73 @@ export default function SupplyPlanBoard({ token, active }) {
   const [meta, setMeta] = useState({ updatedBy: '', updatedAt: '', generatedAt: '' });
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [loadAttempted, setLoadAttempted] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
+  const [pageDraft, setPageDraft] = useState('1');
   const [filters, setFilters] = useState(EMPTY_FILTERS);
-  const [expandedModels, setExpandedModels] = useState(() => new Set());
+  const [filterOptions, setFilterOptions] = useState({ businessUnit: [], productLine: [], productSeries: [] });
+  const [pagination, setPagination] = useState({ page: 1, pageSize: SUPPLY_PLAN_PAGE_SIZE, totalItems: 0, totalPages: 1, totalChildItems: 0 });
+  const [modelStates, setModelStates] = useState(() => new Map());
   const [horizonMonths, setHorizonMonths] = useState(6);
   const [weeks, setWeeks] = useState(() => buildSupplyPlanWeeks(6));
+  const [visibleWeekRange, setVisibleWeekRange] = useState({ start: 0, end: 14 });
+  const modelStatesRef = useRef(modelStates);
+  const summaryRequestRef = useRef(0);
+  const scrollFrameRef = useRef(0);
 
-  async function loadSummary({ manual = false, months = horizonMonths } = {}) {
+  useEffect(() => {
+    modelStatesRef.current = modelStates;
+  }, [modelStates]);
+
+  const filterQuery = useMemo(() => Object.fromEntries(
+    Object.entries(filters).filter(([, value]) => value)
+  ), [filters]);
+
+  const loadSummary = useCallback(async ({ manual = false, page = currentPage, months = horizonMonths } = {}) => {
+    const requestId = summaryRequestRef.current + 1;
+    summaryRequestRef.current = requestId;
     setLoading(true);
     setError('');
     try {
-      const payload = await apiRequest(`/api/supply-plan/summary?months=${months}`, token);
+      const query = new URLSearchParams({
+        page: String(page),
+        pageSize: String(SUPPLY_PLAN_PAGE_SIZE),
+        horizonMonths: String(months),
+        ...filterQuery
+      });
+      const payload = await apiRequest(`/api/supply-plan/summary?${query}`, token);
+      if (summaryRequestRef.current !== requestId) return;
       setRows(Array.isArray(payload.rows) ? payload.rows : []);
       setWeeks(Array.isArray(payload.weeks) ? payload.weeks : buildSupplyPlanWeeks(months));
       setHorizonMonths(payload.horizonMonths || months);
       setParams(payload.params);
+      setPagination(payload.pagination || { page: 1, pageSize: SUPPLY_PLAN_PAGE_SIZE, totalItems: 0, totalPages: 1, totalChildItems: 0 });
+      setFilterOptions(payload.filterOptions || { businessUnit: [], productLine: [], productSeries: [] });
+      setCurrentPage(payload.pagination?.page || 1);
+      setPageDraft(String(payload.pagination?.page || 1));
       setMeta({
         updatedBy: payload.updatedBy || '',
         updatedAt: payload.updatedAt || '',
         generatedAt: payload.generatedAt || ''
       });
-      if (manual) setMessage(`已读取底表18/19/21最新数据，共 ${payload.rows?.length || 0} 个事业部＋物料编码。`);
+      if (manual) setMessage(`已重新计算，共 ${payload.pagination?.totalItems || 0} 个型号。`);
     } catch (requestError) {
-      setError(requestError.message);
+      if (summaryRequestRef.current === requestId) setError(requestError.message);
     } finally {
-      setLoading(false);
+      if (summaryRequestRef.current === requestId) setLoading(false);
     }
-  }
+  }, [currentPage, filterQuery, horizonMonths, token]);
 
   useEffect(() => {
-    if (!active) {
-      setLoadAttempted(false);
-      return;
-    }
-    if (loadAttempted) return;
-    setLoadAttempted(true);
-    loadSummary();
-  }, [active, loadAttempted, token]);
+    if (active) loadSummary();
+  }, [active, loadSummary]);
 
-  function changeParam(channelKey, field, rawValue) {
+  useEffect(() => {
+    setVisibleWeekRange({ start: 0, end: Math.min(14, weeks.length) });
+  }, [weeks.length]);
+
+  const changeParam = useCallback((channelKey, field, rawValue) => {
     const value = rawValue === '' ? '' : Number(rawValue);
     setParams((current) => ({
       ...current,
@@ -281,7 +326,7 @@ export default function SupplyPlanBoard({ token, active }) {
         [channelKey]: { ...current.channels[channelKey], [field]: value }
       }
     }));
-  }
+  }, []);
 
   async function saveParams() {
     if (!params || saving) return;
@@ -295,6 +340,7 @@ export default function SupplyPlanBoard({ token, active }) {
       setParams(payload.params);
       setMeta((current) => ({ ...current, updatedBy: payload.updatedBy || '', updatedAt: payload.updatedAt || '' }));
       setMessage(`路由时间已保存到腾讯云，保存人：${payload.updatedBy || '未知用户'}。`);
+      await loadSummary({ page: currentPage, months: horizonMonths });
     } catch (requestError) {
       setError(requestError.message);
     } finally {
@@ -305,67 +351,82 @@ export default function SupplyPlanBoard({ token, active }) {
   function changeHorizon(months) {
     setHorizonMonths(months);
     setCurrentPage(1);
-    setExpandedModels(new Set());
-    loadSummary({ months });
+    setPageDraft('1');
+    modelStatesRef.current = new Map();
+    setModelStates(new Map());
   }
 
-  const calculatedRows = useMemo(() => rows.map((row) => {
-    const safetyDays = params?.channels?.[row.channelKey]?.safetyDays ?? row.safetyDays;
-    return calculateSupplyPlanRow(
-      { ...row, safetyDays },
-      row.weeklyForecast,
-      null,
-      weeks.length
-    );
-  }), [rows, params, weeks.length]);
-
-  const filterOptions = useMemo(
-    () => buildSupplyPlanFilterOptions(calculatedRows, filters),
-    [calculatedRows, filters]
-  );
-  const filteredRows = useMemo(
-    () => filterSupplyPlanRows(calculatedRows, filters),
-    [calculatedRows, filters]
-  );
-  const modelGroups = useMemo(() => groupSupplyPlanRows(filteredRows, weeks.length), [filteredRows, weeks.length]);
-
-  const totalPages = Math.max(1, Math.ceil(modelGroups.length / SUPPLY_PLAN_PAGE_SIZE));
-  const visibleGroups = useMemo(() => {
-    const safePage = Math.min(currentPage, totalPages);
-    const start = (safePage - 1) * SUPPLY_PLAN_PAGE_SIZE;
-    return modelGroups.slice(start, start + SUPPLY_PLAN_PAGE_SIZE);
-  }, [modelGroups, currentPage, totalPages]);
-  const showChildColumns = visibleGroups.some((group) => expandedModels.has(group.key));
-  const fixedColumns = showChildColumns ? EXPANDED_FIXED_COLUMNS : SUMMARY_FIXED_COLUMNS;
-
-  useEffect(() => {
-    if (currentPage > totalPages) setCurrentPage(totalPages);
-  }, [currentPage, totalPages]);
-
-  function toggleModel(groupKey) {
-    setExpandedModels((current) => {
-      const next = new Set(current);
-      if (next.has(groupKey)) next.delete(groupKey);
-      else next.add(groupKey);
-      return next;
-    });
-  }
-
-  useEffect(() => {
-    setFilters((current) => {
-      const next = { ...current };
-      let changed = false;
-      SUPPLY_PLAN_FILTER_FIELDS.forEach(({ key }) => {
-        if (!next[key]) return;
-        const options = buildSupplyPlanFilterOptions(rows, next);
-        if (!options[key].includes(next[key])) {
-          next[key] = '';
-          changed = true;
-        }
+  const toggleModel = useCallback(async (group) => {
+    const current = modelStatesRef.current.get(group.modelKey);
+    if (current?.loading) return;
+    if (current?.rows) {
+      const next = new Map(modelStatesRef.current);
+      next.set(group.modelKey, { ...current, expanded: !current.expanded });
+      modelStatesRef.current = next;
+      setModelStates(next);
+      return;
+    }
+    const loadingState = new Map(modelStatesRef.current);
+    loadingState.set(group.modelKey, { expanded: true, loading: true, rows: [], error: '' });
+    modelStatesRef.current = loadingState;
+    setModelStates(loadingState);
+    const startedAt = performance.now();
+    try {
+      const query = new URLSearchParams({
+        modelKey: group.modelKey,
+        model: group.model,
+        horizonMonths: String(horizonMonths),
+        ...filterQuery
       });
-      return changed ? next : current;
+      const payload = await apiRequest(`/api/supply-plan/model-detail?${query}`, token);
+      const next = new Map(modelStatesRef.current);
+      next.set(group.modelKey, { expanded: true, loading: false, rows: payload.rows || [], error: '' });
+      modelStatesRef.current = next;
+      setModelStates(next);
+      setMessage(`型号 ${group.model} 明细已加载，用时 ${Math.round(performance.now() - startedAt)}ms。`);
+    } catch (requestError) {
+      const next = new Map(modelStatesRef.current);
+      next.set(group.modelKey, { expanded: true, loading: false, rows: [], error: requestError.message });
+      modelStatesRef.current = next;
+      setModelStates(next);
+    }
+  }, [filterQuery, horizonMonths, token]);
+
+  const showChildColumns = rows.some((group) => modelStates.get(group.modelKey)?.expanded);
+  const fixedColumns = showChildColumns ? EXPANDED_FIXED_COLUMNS : SUMMARY_FIXED_COLUMNS;
+  const fixedWidth = useMemo(() => fixedColumns.reduce((sum, column) => sum + column.width, 0) + 82, [fixedColumns]);
+  const visibleWeeks = useMemo(
+    () => weeks.slice(visibleWeekRange.start, visibleWeekRange.end),
+    [visibleWeekRange, weeks]
+  );
+
+  const handleWeekScroll = useCallback((event) => {
+    const element = event.currentTarget;
+    cancelAnimationFrame(scrollFrameRef.current);
+    scrollFrameRef.current = requestAnimationFrame(() => {
+      const firstVisible = Math.max(0, Math.floor((element.scrollLeft - fixedWidth) / WEEK_COLUMN_WIDTH));
+      const start = Math.max(0, firstVisible - WEEK_OVERSCAN);
+      const visibleCount = Math.ceil(element.clientWidth / WEEK_COLUMN_WIDTH) + WEEK_OVERSCAN * 2;
+      const end = Math.min(weeks.length, start + visibleCount);
+      setVisibleWeekRange((current) => current.start === start && current.end === end ? current : { start, end });
     });
-  }, [rows]);
+  }, [fixedWidth, weeks.length]);
+
+  useEffect(() => () => cancelAnimationFrame(scrollFrameRef.current), []);
+
+  function changeFilter(key, value) {
+    setFilters((current) => ({ ...current, [key]: value }));
+    setCurrentPage(1);
+    setPageDraft('1');
+    modelStatesRef.current = new Map();
+    setModelStates(new Map());
+  }
+
+  function goToPage(page) {
+    const safePage = Math.min(pagination.totalPages, Math.max(1, Number(page) || 1));
+    setCurrentPage(safePage);
+    setPageDraft(String(safePage));
+  }
 
   if (!params && loading) return <div className="loading-fallback">正在读取供应计划数据...</div>;
 
@@ -385,26 +446,14 @@ export default function SupplyPlanBoard({ token, active }) {
       {params ? <RouteSettings params={params} saving={saving} meta={meta} horizonMonths={horizonMonths} onHorizonChange={changeHorizon} onChange={changeParam} onSave={saveParams} /> : null}
 
       <div className="toolbar supply-plan-toolbar">
-        <span className="section-count">全量跟单计划：当前显示 {modelGroups.length} 个产品型号，包含 {filteredRows.length} / {calculatedRows.length} 个事业部＋物料编码</span>
+        <span className="section-count">全量跟单计划：共 {pagination.totalItems} 个产品型号，包含 {pagination.totalChildItems} 个事业部＋物料编码</span>
       </div>
 
       <div className="supply-plan-filter-bar" aria-label="供应计划筛选器">
         {SUPPLY_PLAN_FILTER_FIELDS.map(({ key, label }) => (
           <label key={key}>
             <span>{label}</span>
-            <select value={filters[key]} onChange={(event) => {
-              const value = event.target.value;
-              setFilters((current) => {
-                const next = { ...current, [key]: value };
-                SUPPLY_PLAN_FILTER_FIELDS.forEach(({ key: otherKey }) => {
-                  if (otherKey === key || !next[otherKey]) return;
-                  const nextOptions = buildSupplyPlanFilterOptions(calculatedRows, next);
-                  if (!nextOptions[otherKey].includes(next[otherKey])) next[otherKey] = '';
-                });
-                return next;
-              });
-              setCurrentPage(1);
-            }}>
+            <select value={filters[key]} onChange={(event) => changeFilter(key, event.target.value)}>
               <option value="">全部{label}</option>
               {filterOptions[key].map((value) => <option key={value} value={value}>{value}</option>)}
             </select>
@@ -413,13 +462,16 @@ export default function SupplyPlanBoard({ token, active }) {
         <button type="button" className="ghost" disabled={!Object.values(filters).some(Boolean)} onClick={() => {
           setFilters(EMPTY_FILTERS);
           setCurrentPage(1);
+          setPageDraft('1');
+          modelStatesRef.current = new Map();
+          setModelStates(new Map());
         }}>清空筛选</button>
       </div>
 
       {message ? <p className="message">{message}</p> : null}
       {error ? <p className="message error">{error}</p> : null}
 
-      <div className="supply-plan-table-wrap">
+      <div className="supply-plan-table-wrap" onScroll={handleWeekScroll}>
         <table className="supply-plan-table">
           <thead>
             <tr>
@@ -427,49 +479,63 @@ export default function SupplyPlanBoard({ token, active }) {
                 <th key={column.key} className={`supply-plan-sticky${CHILD_DETAIL_COLUMNS.some((detail) => detail.key === column.key) ? ' supply-plan-detail-column' : ''}`} style={stickyStyle(fixedColumns, index)}>{column.label}</th>
               ))}
               <th className="supply-plan-data-column">数据</th>
-              {weeks.map((week) => (
+              {visibleWeekRange.start ? <th aria-hidden="true" className="supply-plan-week-spacer" style={{ width: visibleWeekRange.start * WEEK_COLUMN_WIDTH, minWidth: visibleWeekRange.start * WEEK_COLUMN_WIDTH }} /> : null}
+              {visibleWeeks.map((week) => (
                 <th key={week.key} className="week-column"><strong>{week.label}</strong><small>{week.dateRange}</small></th>
               ))}
+              {visibleWeekRange.end < weeks.length ? <th aria-hidden="true" className="supply-plan-week-spacer" style={{ width: (weeks.length - visibleWeekRange.end) * WEEK_COLUMN_WIDTH, minWidth: (weeks.length - visibleWeekRange.end) * WEEK_COLUMN_WIDTH }} /> : null}
             </tr>
           </thead>
           <tbody>
-            {visibleGroups.map((group) => {
-              const expanded = expandedModels.has(group.key);
+            {rows.map((group) => {
+              const detailState = modelStates.get(group.modelKey);
+              const expanded = Boolean(detailState?.expanded);
               return (
-                <Fragment key={group.key}>
+                <Fragment key={group.modelKey}>
                   <SupplyPlanMetricRows
                     row={group}
-                    rowKey={`parent-${group.key}`}
+                    rowKey={`parent-${group.modelKey}`}
                     fixedColumns={fixedColumns}
-                    weeks={weeks}
+                    visibleWeeks={visibleWeeks}
+                    weekStart={visibleWeekRange.start}
+                    totalWeeks={weeks.length}
                     level="parent"
                     expanded={expanded}
-                    childCount={group.children.length}
-                    onToggle={() => toggleModel(group.key)}
+                    childCount={group.childCount}
+                    detailLoading={detailState?.loading}
+                    onToggle={toggleModel}
                   />
-                  {expanded ? group.children.map((child) => (
+                  {expanded ? detailState?.rows?.map((child) => (
                     <SupplyPlanMetricRows
                       key={supplyPlanRowKey(child)}
                       row={child}
-                      rowKey={`child-${group.key}-${supplyPlanRowKey(child)}`}
+                      rowKey={`child-${group.modelKey}-${supplyPlanRowKey(child)}`}
                       fixedColumns={fixedColumns}
-                      weeks={weeks}
+                      visibleWeeks={visibleWeeks}
+                      weekStart={visibleWeekRange.start}
+                      totalWeeks={weeks.length}
                       level="child"
                     />
                   )) : null}
+                  {expanded && detailState?.loading ? <tr><td className="supply-plan-detail-status" colSpan={fixedColumns.length + visibleWeeks.length + 3}>正在读取该型号明细…</td></tr> : null}
+                  {expanded && detailState?.error ? <tr><td className="supply-plan-detail-status error" colSpan={fixedColumns.length + visibleWeeks.length + 3}>{detailState.error}</td></tr> : null}
                 </Fragment>
               );
             })}
-            {!visibleGroups.length ? <tr><td className="empty-cell" colSpan={fixedColumns.length + 1 + weeks.length}>暂无可展示的供应计划数据</td></tr> : null}
+            {!rows.length ? <tr><td className="empty-cell" colSpan={fixedColumns.length + 1 + visibleWeeks.length}>暂无可展示的供应计划数据</td></tr> : null}
           </tbody>
         </table>
       </div>
 
       <div className="supply-plan-pagination">
-        <span>每页 {SUPPLY_PLAN_PAGE_SIZE} 个产品型号，第 {Math.min(currentPage, totalPages)} / {totalPages} 页</span>
+        <span>每页 {SUPPLY_PLAN_PAGE_SIZE} 个产品型号，第 {pagination.page} / {pagination.totalPages} 页</span>
         <div>
-          <button type="button" className="ghost" disabled={currentPage <= 1} onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}>上一页</button>
-          <button type="button" className="ghost" disabled={currentPage >= totalPages} onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}>下一页</button>
+          <button type="button" className="ghost" disabled={pagination.page <= 1 || loading} onClick={() => goToPage(pagination.page - 1)}>上一页</button>
+          <form onSubmit={(event) => { event.preventDefault(); goToPage(pageDraft); }}>
+            <label>跳至 <input aria-label="页码跳转" type="number" min="1" max={pagination.totalPages} value={pageDraft} onChange={(event) => setPageDraft(event.target.value)} /> 页</label>
+            <button type="submit" className="ghost" disabled={loading}>跳转</button>
+          </form>
+          <button type="button" className="ghost" disabled={pagination.page >= pagination.totalPages || loading} onClick={() => goToPage(pagination.page + 1)}>下一页</button>
         </div>
       </div>
     </div>
