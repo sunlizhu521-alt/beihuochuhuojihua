@@ -1,6 +1,8 @@
 import React, { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { writeStyledExcelFile } from '../shared/excel-export.js';
+import { DIMENSION_SLOTS, INVENTORY_SUMMARY_LIBRARY_SLOTS } from '../shared/dimension-slot-config.js';
+import { duplicateMappingColumns, validMappingForColumns } from '../shared/dimension-mapping.js';
 import { API } from './api-base.js';
 import { getLoadingProgress, installGlobalFetchProgress, subscribeLoadingProgress } from './loading-progress.js';
 
@@ -54,71 +56,6 @@ function resolveActivePage(user, currentPage = '') {
   return visiblePages[0] || '';
 }
 
-const DIMENSION_SLOTS = [
-  { id: 'productCategory', title: '商品分类', fields: [
-    ['materialCode', '物料编码'],
-    ['sku', 'SKU'],
-    ['logisticsCode', '物流编码'],
-    ['materialName', '物料名称'],
-    ['brand', '品牌'],
-    ['productType', '产品类型/销售产品分类'],
-    ['productLine', '销售产品线'],
-    ['productSeries', '销售系列'],
-    ['model', '型号'],
-    ['salesRegion', '销售区域'],
-    ['pretaxPrice', '不含税结算价']
-  ] },
-  { id: 'purchaseAssignment', title: '采购分工', fields: [
-    ['supplier', '供应商'],
-    ['supplierShortName', '供应商简称'],
-    ['productLineDetailSupplier', '产品线明细供应商'],
-    ['materialCode', '物料编码'],
-    ['productLineDetailPurchaseGroup', '产品线明细-采购组'],
-    ['productLineDetailPurchaseOwner', '产品线明细-采购下单人'],
-    ['purchaseOwner', '采购下单人'],
-    ['purchaseGroup', '采购组'],
-    ['purchaseOrg', '采购组织']
-  ] },
-  { id: 'spare1', title: '仓库名称', fields: [
-    ['subject', '主体/使用组织/库存组织'],
-    ['warehouseCode', '仓库编码'],
-    ['warehouseName', '仓库名称'],
-    ['warehouseLocation', '仓位位置'],
-    ['marketplace', '站点'],
-    ['level1WarehouseCategory', '一级仓库分类'],
-    ['level2WarehouseCategory', '二级仓库分类']
-  ] },
-  { id: 'warehouseMaterialMap', title: '产品迭代关系', fields: [
-    ['subject', '主体/使用组织/库存组织'],
-    ['warehouseCode', '仓库编码'],
-    ['warehouseName', '仓库名称'],
-    ['materialCode', '物料编码'],
-    ['sku', 'SKU'],
-    ['businessUnit', '事业部'],
-    ['remark', '备注']
-  ] },
-  { id: 'dimensionSpare', title: '产品定位', fields: [
-    ['lingxingSku', '领星SKU'],
-    ['materialCode', '物料编码'],
-    ['remark', '备注']
-  ] },
-  { id: 'lingxingWarehouseMap', title: '安全库存', fields: [
-    ['lingxingWarehouseName', '领星仓库名称'],
-    ['kingdeeWarehouseCode', '金蝶仓库编码'],
-    ['kingdeeWarehouseName', '金蝶仓库名称'],
-    ['remark', '备注']
-  ] },
-  { id: 'dimensionSpare2', title: '备用', fields: [] },
-  { id: 'spare2', title: '备用2', fields: [
-    ['stockupStatus', '是否正常备货'],
-    ['brand', '品牌'],
-    ['productType', '产品类型'],
-    ['merchantCode', '商家编码'],
-    ['systemSku', '系统SKU-必填']
-  ] },
-  { id: 'dimensionSpare3', title: '备用3', fields: [] }
-];
-
 const BUSINESS_UNIT_FEEDBACK_FIELDS = [
   ['materialCode', '物料编码'],
   ['sku', 'SKU'],
@@ -144,14 +81,6 @@ const PRODUCT_PROJECT_FIELDS = [
 ];
 
 
-
-
-const INVENTORY_SUMMARY_LIBRARY_SLOTS = [
-  { id: 'inventorySummaryFile18', title: '库存数据', fields: [] },
-  { id: 'inventorySummaryFile19', title: '未交付数据', fields: [] },
-  { id: 'inventorySummaryFile20', title: '销售数据', fields: [] },
-  { id: 'inventorySummaryFile21', title: 'M+6 预测', fields: [] }
-];
 
 
 function normalize(value) {
@@ -2866,76 +2795,33 @@ function MonthCalendarFilter({ label, value = [], options = [], onChange, multip
   );
 }
 
-function FieldMapping({ fields, columns, mapping, onChange, requiredFields = [], manual = false }) {
+function FieldMapping({ fields, columns, mapping, onChange, requiredFields = [], manual = false, note = '', confirmed = false, onConfirm = () => {} }) {
   const required = new Set(requiredFields);
+  const usedColumns = new Set(Object.values(mapping || {}).filter(Boolean));
+  const mappedCount = fields.filter(([key]) => mapping[key]).length;
+  const requiredMappedCount = requiredFields.filter((key) => mapping[key]).length;
   return (
     <div className="mapping-grid">
-      {manual && <p className="mapping-grid-note">请手动选择标记为必选的字段；其他未选择字段按空值保存。</p>}
-      {fields.map(([key, label]) => (
+      {manual && <p className="mapping-grid-note">{note || '请核对标记为必选的字段；其他未选择字段按空值保存。'}</p>}
+      <p className="mapping-grid-summary">已映射 {mappedCount}/{fields.length}{requiredFields.length ? `，必选 ${requiredMappedCount}/${requiredFields.length}` : ''}</p>
+      {fields.map(([key, label, description]) => (
         <label key={key}>
-          {label}{required.has(key) ? '（必选）' : ''}
+          <span>{label}{required.has(key) ? '（必选）' : ''}</span>
+          {description && <small>{description}</small>}
           <select value={mapping[key] || ''} onChange={(event) => onChange({ ...mapping, [key]: event.target.value })}>
             <option value="">请选择字段</option>
-            {columns.map((column) => <option key={column} value={column}>{column}</option>)}
+            {columns.map((column) => <option key={column} value={column} disabled={usedColumns.has(column) && mapping[key] !== column}>{column}{usedColumns.has(column) && mapping[key] !== column ? '（已用）' : ''}</option>)}
           </select>
         </label>
       ))}
+      {manual && (
+        <label className="mapping-confirmation">
+          <input type="checkbox" checked={confirmed} onChange={(event) => onConfirm(event.target.checked)} />
+          <span>我已核对字段含义和映射关系</span>
+        </label>
+      )}
     </div>
   );
-}
-
-const FIELD_MAPPING_ALIASES = {
-  subject: ['主体', '使用组织', '库存组织'],
-  jdId: ['SKU', '京东ID'],
-  jdRdc: ['RDC'],
-  jdStockQty: ['全国现货库存', '现货库存'],
-  warehouseCode: ['仓库编码', '仓库代码', '仓库编号', '金蝶仓库编码', '仓库ID'],
-  warehouseName: ['仓库名称', '仓库名', '金蝶仓库名称'],
-  warehouseLocation: ['仓位位置', '仓库位置', '仓位'],
-  pretaxPrice: ['不含税结算价'],
-  salesRegion: ['销售区域'],
-  marketplace: ['站点', '站点名称', '国家站点', '销售站点', '国家/地区'],
-  level1WarehouseCategory: ['一级仓库分类', '仓库一级分类', '一级分类', '仓库大类', '一级仓库类型'],
-  level2WarehouseCategory: ['二级仓库分类', '仓库二级分类', '二级分类', '仓库小类', '二级仓库类型']
-};
-
-function normalizedMappingName(value) {
-  return normalize(value)
-    .normalize('NFKC')
-    .toLowerCase()
-    .replace(/[(（]?(必填|选填|required)[)）]?/gi, '')
-    .replace(/[\s_\-—:：/\\]+/g, '');
-}
-
-function inferredMappingColumn(key, label, columns) {
-  const aliases = [label, key, ...(FIELD_MAPPING_ALIASES[key] || [])]
-    .map(normalizedMappingName)
-    .filter(Boolean);
-  const ranked = columns.map((column) => {
-    const candidate = normalizedMappingName(column);
-    const score = aliases.reduce((best, alias) => {
-      if (candidate === alias) return Math.max(best, 1000 + alias.length);
-      if (alias.length >= 2 && (candidate.startsWith(alias) || candidate.endsWith(alias))) return Math.max(best, 500 + alias.length);
-      if (alias.length >= 2 && candidate.includes(alias)) return Math.max(best, 200 + alias.length);
-      return best;
-    }, 0);
-    return { column, score };
-  }).filter((item) => item.score > 0).sort((left, right) => right.score - left.score);
-  if (!ranked.length || (ranked[1] && ranked[0].score === ranked[1].score)) return '';
-  return ranked[0].column;
-}
-
-function validMappingForColumns(mapping = {}, columns = [], fields = [], inferMissing = true) {
-  const validColumns = new Set(columns);
-  return fields.reduce((next, [key, label]) => {
-    const value = mapping[key] || '';
-    next[key] = value && validColumns.has(value)
-      ? value
-      : inferMissing
-        ? inferredMappingColumn(key, label, columns)
-        : '';
-    return next;
-  }, {});
 }
 
 function isInventoryMappingSlot(slotId) {
@@ -3129,7 +3015,7 @@ function DimensionLibrary({ token, reloadDemands, reloadDemandData = true, setMe
           sheetMappings[''] || savedMapping,
           columns,
           slot.fields,
-          !slot.manualFieldSelection && !hasSavedMapping
+          Boolean(slot.autoMap) || (!slot.manualFieldSelection && !hasSavedMapping)
         );
         if (record?.sheetName) {
           const recordSheet = (payload.sheetPreviews || []).find((item) => item.sheetName === record.sheetName);
@@ -3152,6 +3038,7 @@ function DimensionLibrary({ token, reloadDemands, reloadDemandData = true, setMe
             savedMapping,
             sheetMappings: { ...sheetMappings, '': mapping },
             mapping,
+            mappingConfirmed: false,
             sheetName: '',
             inspectRowCount,
             progress: columns.length ? 100 : 70,
@@ -3213,7 +3100,7 @@ function DimensionLibrary({ token, reloadDemands, reloadDemandData = true, setMe
       savedMapping,
       nextColumns,
       slot.fields,
-      !slot.manualFieldSelection && !hasSavedMapping
+      Boolean(slot.autoMap) || (!slot.manualFieldSelection && !hasSavedMapping)
     );
     const inspectRowCount = sheetName
       ? (sheet?.rowCount == null ? null : Number(sheet.rowCount || 0))
@@ -3226,6 +3113,7 @@ function DimensionLibrary({ token, reloadDemands, reloadDemandData = true, setMe
       columns: nextColumns,
       sheetMappings,
       mapping,
+      mappingConfirmed: false,
       inspectRowCount,
       progress: 100,
       statusText: sheetName
@@ -3299,6 +3187,28 @@ function DimensionLibrary({ token, reloadDemands, reloadDemandData = true, setMe
           busy: ''
         });
         setMessage(`${slot.title} 请选择必选字段：${missingLabels}`);
+        return;
+      }
+      const duplicateColumns = duplicateMappingColumns(state.mapping, slot.fields || []);
+      if (duplicateColumns.length) {
+        const duplicateText = duplicateColumns.map(({ column, targets }) => `${column}→${targets.join('、')}`).join('；');
+        setSlotState(slot.id, {
+          progress: 100,
+          statusText: `同一源列不能重复映射：${duplicateText}`,
+          statusType: 'warning',
+          busy: ''
+        });
+        setMessage(`${slot.title} 存在重复字段映射，请修正后上传`);
+        return;
+      }
+      if (slot.requireMappingConfirmation && !state.mappingConfirmed) {
+        setSlotState(slot.id, {
+          progress: 100,
+          statusText: '请勾选“我已核对字段含义和映射关系”',
+          statusType: 'warning',
+          busy: ''
+        });
+        setMessage(`${slot.title} 请先确认字段映射`);
         return;
       }
     }
@@ -3478,10 +3388,10 @@ function DimensionLibrary({ token, reloadDemands, reloadDemandData = true, setMe
   function diagnosticsText(slotId, diagnostics) {
     if (!diagnostics) return '';
     if (slotId === 'purchaseAssignment') {
-      return `诊断：有采购下单人 ${diagnostics.ownerRows || 0} 行，供应商+物料编码 ${diagnostics.keyRows || 0} 行，可匹配当前订单 ${diagnostics.matchedRows || 0} 条`;
+      return `诊断：有采购下单人 ${diagnostics.ownerRows || 0} 行，供应商+物料编码 ${diagnostics.keyRows || 0} 行`;
     }
     if (slotId === 'productCategory') {
-      return `诊断：物料编码 ${diagnostics.keyRows || 0} 个，可匹配当前订单 ${diagnostics.matchedRows || 0} 条`;
+      return `诊断：物料编码 ${diagnostics.keyRows || 0} 个`;
     }
     return '';
   }
@@ -3567,6 +3477,9 @@ function DimensionLibrary({ token, reloadDemands, reloadDemandData = true, setMe
                   mapping={state.mapping || {}}
                   requiredFields={slot.manualFieldSelection ? (slot.requiredFields || []) : []}
                   manual={Boolean(slot.manualFieldSelection)}
+                  note={slot.mappingNote || ''}
+                  confirmed={Boolean(state.mappingConfirmed)}
+                  onConfirm={(mappingConfirmed) => setSlotState(slot.id, { mappingConfirmed })}
                   onChange={(mapping) => {
                     const nextMapping = validMappingForColumns(mapping, state.columns, slot.fields, false);
                     const sheetKey = state.sheetName || '';
@@ -3575,6 +3488,7 @@ function DimensionLibrary({ token, reloadDemands, reloadDemandData = true, setMe
                       [slot.id]: {
                         ...(prev[slot.id] || {}),
                         mapping: nextMapping,
+                        mappingConfirmed: false,
                         savedMapping: nextMapping,
                         sheetMappings: { ...(prev[slot.id]?.sheetMappings || {}), [sheetKey]: nextMapping }
                       }
@@ -3584,7 +3498,15 @@ function DimensionLibrary({ token, reloadDemands, reloadDemandData = true, setMe
                 />
               )}
               <div className="slot-info">
+                {slot.mappingNote && !state.file && <span className="slot-mapping-note">{slot.mappingNote}</span>}
                 {record && <span>文件：{record.file_name}</span>}
+                {record && slot.fields.length > 0 && (
+                  <span className={hasMappedInventoryFields(record.mapping, slot.fields) ? 'slot-mapping-saved' : 'slot-mapping-pending'}>
+                    {hasMappedInventoryFields(record.mapping, slot.fields)
+                      ? `已确认映射：${slot.fields.filter(([key]) => record.mapping?.[key]).length}/${slot.fields.length} 个字段`
+                      : '旧文件尚未确认字段映射，重新上传时需核对'}
+                  </span>
+                )}
                 {hasSheets && <span>工作表：{sheetNames.join('、')}</span>}
                 {record?.sheet_name && <span>已应用工作表：{record.sheet_name}</span>}
                 {record?.selectedSheetNames?.length > 0 && <span>已应用工作表：{record.selectedSheetNames.join('、')}</span>}

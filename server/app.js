@@ -34,6 +34,8 @@ import { buildInventoryRiskWorkbook } from './inventory-risk-export.js';
 
 
 import { buildStyledExcelBuffer } from '../shared/excel-export.js';
+import { MAPPED_SLOT_CONFIGS } from '../shared/dimension-slot-config.js';
+import { mappingValidation } from '../shared/dimension-mapping.js';
 
 
 
@@ -159,6 +161,9 @@ const DIMENSION_SLOTS = {
   fullInventoryFile1: '全量库存底表',
   fullInventoryFile2: '订单履约表'
 };
+Object.values(MAPPED_SLOT_CONFIGS).forEach((slot) => {
+  DIMENSION_SLOTS[slot.id] = slot.title;
+});
 [
   '海外事业一部',
   '海外事业二部',
@@ -524,7 +529,13 @@ function workbookRows(file, sheetName = null, options = {}) {
     const data = sheetData(workbook.Sheets[name]);
     return { sheetName: name, columns: data.columns, rowCount: data.rowCount, previewRows: data.previewRows, headerRow: data.headerRow };
   }) : [];
-  return { sheetNames: workbook.SheetNames, sheetPreviews, sheets, rows: sheets.flatMap((sheet) => sheet.rows) };
+  return {
+    sheetNames: workbook.SheetNames,
+    sheetPreviews,
+    sheets,
+    columns: [...new Set(sheets.flatMap((sheet) => sheet.columns || []))],
+    rows: sheets.flatMap((sheet) => sheet.rows)
+  };
 }
 
 function rowObject(columns, values) {
@@ -1005,6 +1016,42 @@ function pickAny(row, columns = []) {
   return '';
 }
 
+function configuredMappedRow(slotId, row, mapping) {
+  const config = MAPPED_SLOT_CONFIGS[slotId];
+  if (!config) return null;
+  const mapped = Object.fromEntries(config.fields.map(([key]) => [key, pick(row, mapping[key])]));
+  return /^inventorySummaryFile(?:18|19|20|21)$/.test(slotId)
+    ? { ...row, ...mapped }
+    : { raw: row, ...mapped };
+}
+
+function validateConfiguredSlotMapping(slotId, mapping, columns) {
+  const config = MAPPED_SLOT_CONFIGS[slotId];
+  if (!config) return;
+  const validation = mappingValidation(mapping, config.fields, config.requiredFields || [], columns || []);
+  const labels = new Map(config.fields.map(([key, label]) => [key, label]));
+  if (validation.missingFields.length) {
+    const missing = validation.missingFields.map((key) => labels.get(key) || key).join('、');
+    const error = new Error(`${config.title}缺少必选字段映射：${missing}`);
+    error.status = 400;
+    error.publicMessage = error.message;
+    throw error;
+  }
+  if (validation.duplicateColumns.length) {
+    const duplicate = validation.duplicateColumns.map(({ column, targets }) => `${column}→${targets.join('、')}`).join('；');
+    const error = new Error(`${config.title}同一源列不能重复映射：${duplicate}`);
+    error.status = 400;
+    error.publicMessage = error.message;
+    throw error;
+  }
+  if (validation.unknownColumns.length) {
+    const error = new Error(`${config.title}映射的源列不存在：${[...new Set(validation.unknownColumns)].join('、')}`);
+    error.status = 400;
+    error.publicMessage = error.message;
+    throw error;
+  }
+}
+
 function normalizedDimensionHeader(value) {
   return normalize(value)
     .normalize('NFKC')
@@ -1213,46 +1260,6 @@ function resolveAssignment(lookups, supplier, materialCode) {
   return selectUniqueAssignment(materialRows);
 }
 
-function dimensionLookups() {
-  const productRows = getDimensionRows('productCategory');
-  const assignmentRows = getDimensionRows('purchaseAssignment');
-  const assignmentLookups = buildAssignmentLookups(assignmentRows);
-  const productMap = new Map();
-  const supplierShortNamesByMaterial = new Map();
-  const addSupplierNames = (materialCode, names) => {
-    const materialKey = normalizeMatchPart(materialCode);
-    if (!materialKey) return;
-    const values = supplierShortNamesByMaterial.get(materialKey) || [];
-    splitSupplierNames(names).forEach((name) => {
-      if (!values.includes(name)) values.push(name);
-    });
-    supplierShortNamesByMaterial.set(materialKey, values);
-  };
-  productRows.forEach((row) => {
-    const materialCode = normalize(row.materialCode);
-    if (materialCode && !productMap.has(materialCode)) productMap.set(materialCode, row);
-  });
-  assignmentRows.forEach((row) => {
-    assignmentSupplierDisplayNames(row).forEach((name) => addSupplierNames(assignmentMaterialCode(row), name));
-  });
-  all('SELECT material_code, supplier_short_name FROM order_demands WHERE active = 1').forEach((row) => {
-    addSupplierNames(row.material_code, row.supplier_short_name);
-  });
-  return { productMap, ...assignmentLookups, supplierShortNamesByMaterial };
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
 function splitDelimited(value) {
   return [...new Set(normalize(value).split(/[+、]/).map(normalize).filter(Boolean))];
 }
@@ -1275,8 +1282,6 @@ function realPurchaseOwner(...values) {
 
 function dimensionDiagnostics(slotId, rows = []) {
   if (slotId === 'purchaseAssignment') {
-    const demands = all('SELECT supplier, material_code FROM order_demands WHERE active = 1');
-    const lookups = buildAssignmentLookups(rows);
     let ownerRows = 0;
     let keyRows = 0;
     rows.forEach((row) => {
@@ -1286,14 +1291,11 @@ function dimensionDiagnostics(slotId, rows = []) {
       if (owner) ownerRows++;
       if (materialCode && suppliers.length) keyRows++;
     });
-    const matchedRows = demands.filter((demand) => assignmentOwner(resolveAssignment(lookups, demand.supplier, demand.material_code))).length;
-    return { totalRows: rows.length, ownerRows, keyRows, matchedRows };
+    return { totalRows: rows.length, ownerRows, keyRows };
   }
   if (slotId === 'productCategory') {
-    const demandMaterials = new Set(all('SELECT material_code FROM order_demands WHERE active = 1').map((row) => normalizeMatchPart(row.material_code)));
     const materialSet = new Set(rows.map((row) => normalizeMatchPart(row.materialCode)).filter(Boolean));
-    const matchedRows = [...demandMaterials].filter((key) => materialSet.has(key)).length;
-    return { totalRows: rows.length, keyRows: materialSet.size, matchedRows };
+    return { totalRows: rows.length, keyRows: materialSet.size };
   }
   if (slotId === 'spare2' || slotId === 'wangdianDataMain') {
     const merchantCodes = new Set(rows.map((row) => normalize(domesticMerchantCode(row))).filter(Boolean));
@@ -2192,6 +2194,22 @@ app.post('/api/dimensions/:slotId/upload', requireAuth, requireAnyPage(['dimensi
   const selectedSheetNames = parseJson(req.body.sheetNames, [])
     .map(normalize)
     .filter((name, index, names) => name && names.indexOf(name) === index);
+  const configuredSlot = MAPPED_SLOT_CONFIGS[slotId];
+  if (configuredSlot?.requiresSheetSelection) {
+    const sheetNames = await workbookSheetNamesFromUpload(req.file);
+    if (sheetName && !sheetNames.includes(sheetName)) {
+      const error = new Error(`${configuredSlot.title}选择的工作表不存在，请重新选择`);
+      error.status = 400;
+      error.publicMessage = error.message;
+      throw error;
+    }
+    if (sheetNames.length > 1 && !sheetName) {
+      const error = new Error(`${configuredSlot.title}包含多个工作表，请先选择要应用的工作表`);
+      error.status = 400;
+      error.publicMessage = error.message;
+      throw error;
+    }
+  }
   if (!isInventoryManualSlot(slotId) && baseSlotId === 'inventorySummaryFile15') {
     const sheetNames = await workbookSheetNamesFromUpload(req.file);
     if (sheetName && !sheetNames.includes(sheetName)) {
@@ -2247,10 +2265,13 @@ app.post('/api/dimensions/:slotId/upload', requireAuth, requireAnyPage(['dimensi
       )
       : workbookRows(inventorySummaryFile, sheetName || null, { includePreviews: false })
   );
+  validateConfiguredSlotMapping(slotId, mapping, parsed.columns || []);
   const rowMapping = slotId === 'spare1' && parsed.columns?.[7]
     ? { ...mapping, level2WarehouseCategory: parsed.columns[7] }
     : mapping;
   const parsedRows = inventoryParsed || fullInventoryParsed ? parsed.rows : parsed.rows.map((row) => {
+    const configuredRow = configuredMappedRow(slotId, row, mapping);
+    if (configuredRow) return configuredRow;
     if (['inventorySummaryFile4', 'inventorySummaryFile5'].includes(slotId)) {
       return {
         storeName: pick(row, mapping.storeName) || pickAny(row, ['店铺', '店铺名称', '账号', '账号名称']),
@@ -2333,16 +2354,6 @@ app.post('/api/dimensions/:slotId/upload', requireAuth, requireAnyPage(['dimensi
         lingxingSku: pick(row, mapping.lingxingSku) || pickAny(row, ['领星SKU', 'SKU', 'MSKU', 'Seller SKU']),
         materialCode: pick(row, mapping.materialCode) || pickAny(row, ['物料编码', '品号', '商品编码', '存货编码']),
         remark: pick(row, mapping.remark) || pickAny(row, ['备注', '说明'])
-      };
-    }
-    if (slotId === 'spare2') {
-      return {
-        raw: row,
-        stockupStatus: pick(row, mapping.stockupStatus) || pickAny(row, ['是否正常备货']),
-        brand: pick(row, mapping.brand) || pickAny(row, ['品牌']),
-        productType: pick(row, mapping.productType) || pickAny(row, ['产品类型']),
-        merchantCode: pick(row, mapping.merchantCode) || pickAny(row, ['商家编码', '商品编码']),
-        systemSku: pick(row, mapping.systemSku) || pickAny(row, ['系统SKU-必填', '系统SKU', 'SKU'])
       };
     }
     if (['wangdianDataMain', 'inventorySummaryFile6'].includes(slotId)) {

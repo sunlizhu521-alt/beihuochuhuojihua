@@ -5359,6 +5359,64 @@ th {
   max-width: 100%;
 }
 
+.library-slot .mapping-grid label > span {
+  color: #334155;
+  font-weight: 600;
+}
+
+.library-slot .mapping-grid label > small {
+  min-height: 30px;
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.mapping-grid-note,
+.mapping-grid-summary,
+.mapping-confirmation {
+  grid-column: 1 / -1;
+}
+
+.mapping-grid-summary {
+  margin: -4px 0 0;
+  color: #475569;
+  font-size: 12px;
+}
+
+.library-slot .mapping-confirmation {
+  display: flex;
+  grid-template-columns: none;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  background: #f8fafc;
+}
+
+.library-slot .mapping-confirmation input {
+  flex: 0 0 auto;
+  width: auto;
+}
+
+.slot-mapping-note {
+  padding: 8px 10px;
+  border-radius: 7px;
+  background: #f8fafc;
+  color: #475569;
+  line-height: 1.45;
+}
+
+.slot-mapping-saved {
+  color: #047857;
+  font-weight: 600;
+}
+
+.slot-mapping-pending {
+  color: #b45309;
+  font-weight: 600;
+}
+
 .slot-head {
   display: flex;
   align-items: start;
