@@ -108,15 +108,23 @@ test('事业部筛选按星号前名称合并选项并匹配原始明细', () =>
   const sourceRows = [
     { businessUnit: '国内事业部', materialCode: '1' },
     { businessUnit: '国内事业部*TEMU业务部', materialCode: '2' },
-    { businessUnit: '供应链管理中心＊采购部', materialCode: '3' }
+    { businessUnit: '供应链管理中心＊采购部', materialCode: '3' },
+    { businessUnit: '全球招商部', materialCode: '4' },
+    { businessUnit: '全球招商事业部', materialCode: '5' }
   ];
   assert.equal(normalizeSupplyPlanBusinessUnit('国内事业部*TEMU业务部'), '国内事业部');
   assert.equal(normalizeSupplyPlanBusinessUnit('供应链管理中心＊采购部'), '供应链管理中心');
+  assert.equal(normalizeSupplyPlanBusinessUnit('全球招商部'), '全球招商事业部');
+  assert.equal(normalizeSupplyPlanBusinessUnit('全球招商事业部'), '全球招商事业部');
   assert.deepEqual(
     filterSupplyPlanRows(sourceRows, { businessUnit: '国内事业部' }).map((row) => row.materialCode),
     ['1', '2']
   );
-  assert.deepEqual(buildSupplyPlanFilterOptions(sourceRows).businessUnit, ['供应链管理中心', '国内事业部']);
+  assert.deepEqual(buildSupplyPlanFilterOptions(sourceRows).businessUnit, ['供应链管理中心', '国内事业部', '全球招商事业部']);
+  assert.deepEqual(
+    filterSupplyPlanRows(sourceRows, { businessUnit: '全球招商事业部' }).map((row) => row.materialCode),
+    ['4', '5']
+  );
 });
 
 test('供应计划支持动作结论筛选', () => {

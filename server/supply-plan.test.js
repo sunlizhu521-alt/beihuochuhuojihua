@@ -247,6 +247,25 @@ test('服务端事业部筛选合并星号后的下级名称', () => {
   assert.deepEqual(page.filterOptions.businessUnit, ['供应链管理中心', '国内事业部']);
 });
 
+test('全球招商部与全球招商事业部在服务端聚合为同一事业部', () => {
+  const payload = buildSupplyPlanData({
+    inventorySummaryData: {
+      inventorySummaryFile18: { rows: [
+        { warehouseName: '国内仓', businessUnit: '全球招商部', materialCode: '3001', onHandQty: 3, inTransitQty: 1 },
+        { warehouseName: '国内仓', businessUnit: '全球招商事业部', materialCode: '3001', onHandQty: 4, inTransitQty: 2 }
+      ] }
+    },
+    months: 6,
+    now
+  });
+  assert.equal(normalizeSupplyPlanBusinessUnit('全球招商部'), '全球招商事业部');
+  assert.equal(normalizeSupplyPlanBusinessUnit('全球招商事业部'), '全球招商事业部');
+  assert.equal(payload.rows.length, 1);
+  assert.equal(payload.rows[0].businessUnit, '全球招商事业部');
+  assert.equal(payload.rows[0].onHandQty, 7);
+  assert.equal(payload.rows[0].inTransitQty, 3);
+});
+
 test('型号详情使用产品线系列型号唯一键避免同名串数据', () => {
   const rows = [
     { modelKey: 'A\u001fX\u001fM1', productLine: 'A', productSeries: 'X', model: 'M1', businessUnit: '一部', materialCode: '1' },

@@ -1,14 +1,12 @@
+import { normalizeSupplyPlanBusinessUnit } from '../shared/supply-plan-business-unit.js';
+
+export { normalizeSupplyPlanBusinessUnit } from '../shared/supply-plan-business-unit.js';
+
 const HORIZON_MONTH_OPTIONS = new Set([6, 9, 12, 15, 18, 21, 24]);
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 function text(value) {
   return String(value ?? '').normalize('NFKC').trim();
-}
-
-export function normalizeSupplyPlanBusinessUnit(value) {
-  const original = text(value);
-  const normalized = text(original.split('*')[0]);
-  return normalized || original;
 }
 
 function numberValue(value) {
@@ -21,7 +19,7 @@ function materialCodeValue(value) {
 }
 
 function businessUnitMaterialKey(businessUnit, materialCode) {
-  return `${text(businessUnit)}\u001f${materialCodeValue(materialCode)}`;
+  return `${normalizeSupplyPlanBusinessUnit(businessUnit)}\u001f${materialCodeValue(materialCode)}`;
 }
 
 function modelKeyValue(productLine, productSeries, model, fallback) {
@@ -165,7 +163,7 @@ export function splitForecastToWeeks(forecastRows = [], now = new Date()) {
   const result = [];
   const current = utcDate(now);
   forecastRows.forEach((row) => {
-    const businessUnit = text(row?.businessUnit);
+    const businessUnit = normalizeSupplyPlanBusinessUnit(row?.businessUnit);
     const materialCode = materialCodeValue(row?.materialCode);
     const sku = text(row?.sku);
     const skuName = text(row?.skuName || row?.materialName);
@@ -369,7 +367,7 @@ export function buildSupplyPlanData({
   const weekKeys = new Set(weeks.map((week) => week.key));
   const grouped = new Map();
   const ensureItem = (row) => {
-    const businessUnit = text(row?.businessUnit);
+    const businessUnit = normalizeSupplyPlanBusinessUnit(row?.businessUnit);
     const materialCode = materialCodeValue(row?.materialCode);
     if (!businessUnit || !materialCode) return null;
     const key = businessUnitMaterialKey(businessUnit, materialCode);

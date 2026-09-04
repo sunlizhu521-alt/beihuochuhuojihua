@@ -659,6 +659,7 @@ export default function SupplyPlanBoard({ token, active }) {
       kind: 'data',
       row: {
         ...group,
+        businessUnit: normalizeSupplyPlanBusinessUnit(group.businessUnit),
         normalizedBusinessUnit: normalizeSupplyPlanBusinessUnit(group.businessUnit)
       },
       level: 'parent',
@@ -674,6 +675,7 @@ export default function SupplyPlanBoard({ token, active }) {
         kind: 'data',
         row: {
           ...child,
+          businessUnit: normalizeSupplyPlanBusinessUnit(child.businessUnit),
           normalizedBusinessUnit: normalizeSupplyPlanBusinessUnit(child.businessUnit)
         },
         level: 'child',

@@ -1,3 +1,7 @@
+import { normalizeSupplyPlanBusinessUnit } from '../shared/supply-plan-business-unit.js';
+
+export { normalizeSupplyPlanBusinessUnit } from '../shared/supply-plan-business-unit.js';
+
 export const SUPPLY_PLAN_PAGE_SIZE = 10;
 export const SUPPLY_PLAN_ROW_TYPES = Object.freeze([
   '销售预测',
@@ -79,12 +83,6 @@ function text(value) {
   return String(value ?? '').normalize('NFKC').trim();
 }
 
-export function normalizeSupplyPlanBusinessUnit(value) {
-  const original = text(value);
-  const normalized = text(original.split('*')[0]);
-  return normalized || original;
-}
-
 function headerText(value) {
   return text(value).replace(/\s+/g, '');
 }
@@ -103,7 +101,7 @@ export function normalizeSupplyPlanImportKey(value, keyType = 'sku') {
 }
 
 export function supplyPlanRowKey(row) {
-  return `${text(row?.businessUnit)}\u001f${normalizeSupplyPlanImportKey(row?.materialCode, 'materialCode')}`;
+  return `${normalizeSupplyPlanBusinessUnit(row?.businessUnit)}\u001f${normalizeSupplyPlanImportKey(row?.materialCode, 'materialCode')}`;
 }
 
 export function supplyPlanModelKey(row) {
