@@ -112,6 +112,24 @@ test('供应计划支持动作结论筛选', () => {
   assert.deepEqual(buildSupplyPlanFilterOptions(rows, {}).actionConclusion, ['正常流转', '加急补货', '调整计划', '停采观察']);
 });
 
+test('供应计划支持销售产品分类、库存状态复选和销售预测复选', () => {
+  const sourceRows = [
+    { materialCode: '1', productType: '成品', onHandQty: 5, inTransitQty: 0, undeliveredQty: 0, forecastTotal: 0 },
+    { materialCode: '2', productType: '配件', onHandQty: 0, inTransitQty: 6, undeliveredQty: 0, forecastTotal: 12 },
+    { materialCode: '3', productType: '成品', onHandQty: 0, inTransitQty: 0, undeliveredQty: 7, forecastTotal: 0 },
+    { materialCode: '4', productType: '成品', onHandQty: 0, inTransitQty: 0, undeliveredQty: 0, forecastTotal: 8 }
+  ];
+  assert.deepEqual(
+    filterSupplyPlanRows(sourceRows, { productType: '成品', inventoryStatus: ['在库', '未交付'], hasForecast: ['无'] }).map((row) => row.materialCode),
+    ['1', '3']
+  );
+  assert.equal(filterSupplyPlanRows(sourceRows, { inventoryStatus: [], hasForecast: [] }).length, 4);
+  const options = buildSupplyPlanFilterOptions(sourceRows);
+  assert.deepEqual(options.productType, ['成品', '配件']);
+  assert.deepEqual(options.inventoryStatus, ['在库', '在途', '未交付']);
+  assert.deepEqual(options.hasForecast, ['有', '无']);
+});
+
 test('供应计划筛选选项按其他已选条件联动', () => {
   const sourceRows = [
     { businessUnit: '国内事业部', productLine: '护理床', productSeries: 'A系列' },

@@ -1,6 +1,8 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   SUPPLY_PLAN_FILTER_FIELDS,
+  SUPPLY_PLAN_FORECAST_STATUS_OPTIONS,
+  SUPPLY_PLAN_INVENTORY_STATUS_OPTIONS,
   SUPPLY_PLAN_PAGE_SIZE,
   SUPPLY_PLAN_ROW_TYPES,
   buildSupplyPlanWeeks,
@@ -51,10 +53,47 @@ const EXPANDED_FIXED_COLUMNS = [
   ...CHILD_DETAIL_COLUMNS,
   ...SUMMARY_FIXED_COLUMNS.slice(4)
 ];
-const EMPTY_FILTERS = Object.freeze({ businessUnit: '', productLine: '', productSeries: '', actionConclusion: '' });
+const EMPTY_FILTERS = Object.freeze({
+  businessUnit: '',
+  productLine: '',
+  productSeries: '',
+  productType: '',
+  inventoryStatus: Object.freeze([]),
+  hasForecast: Object.freeze([]),
+  actionConclusion: ''
+});
+const FILTER_OPTIONS_DEFAULT = Object.freeze({
+  businessUnit: [],
+  productLine: [],
+  productSeries: [],
+  productType: [],
+  inventoryStatus: SUPPLY_PLAN_INVENTORY_STATUS_OPTIONS,
+  hasForecast: SUPPLY_PLAN_FORECAST_STATUS_OPTIONS,
+  actionConclusion: []
+});
+const ACTION_FILTER_FIELD = SUPPLY_PLAN_FILTER_FIELDS.find(({ key }) => key === 'actionConclusion');
+const PRIMARY_FILTER_FIELDS = SUPPLY_PLAN_FILTER_FIELDS.filter(({ key }) => key !== 'actionConclusion');
 
 function filtersEqual(left, right) {
-  return SUPPLY_PLAN_FILTER_FIELDS.every(({ key }) => left[key] === right[key]);
+  return Object.keys(EMPTY_FILTERS).every((key) => {
+    const leftValue = left[key];
+    const rightValue = right[key];
+    if (!Array.isArray(leftValue) && !Array.isArray(rightValue)) return leftValue === rightValue;
+    const leftList = Array.isArray(leftValue) ? leftValue : [];
+    const rightList = Array.isArray(rightValue) ? rightValue : [];
+    return leftList.length === rightList.length && leftList.every((value, index) => value === rightList[index]);
+  });
+}
+
+function hasActiveFilters(filters) {
+  return Object.values(filters).some((value) => Array.isArray(value) ? value.length > 0 : Boolean(value));
+}
+
+function filterQueryValues(filters) {
+  return Object.fromEntries(Object.entries(filters).flatMap(([key, value]) => {
+    if (Array.isArray(value)) return value.length ? [[key, value.join(',')]] : [];
+    return value ? [[key, value]] : [];
+  }));
 }
 
 function detailCacheKey(group, horizonMonths, filterQuery) {
@@ -176,6 +215,30 @@ const SupplyPlanRelatedDetails = memo(function SupplyPlanRelatedDetails({ detail
         );
       })}
     </div>
+  );
+});
+
+const SupplyPlanCheckboxFilter = memo(function SupplyPlanCheckboxFilter({ label, options, value, onChange }) {
+  const selected = Array.isArray(value) ? value : [];
+  return (
+    <fieldset className="supply-plan-check-filter">
+      <legend>{label}</legend>
+      <div className="supply-plan-check-options">
+        {selected.length === 0 ? <span className="supply-plan-filter-all">全部</span> : null}
+        {options.map((option) => (
+          <label key={option}>
+            <input
+              type="checkbox"
+              checked={selected.includes(option)}
+              onChange={() => onChange(selected.includes(option)
+                ? selected.filter((item) => item !== option)
+                : [...selected, option])}
+            />
+            <span>{option}</span>
+          </label>
+        ))}
+      </div>
+    </fieldset>
   );
 });
 
@@ -344,7 +407,7 @@ export default function SupplyPlanBoard({ token, active }) {
   const [filterDrafts, setFilterDrafts] = useState(EMPTY_FILTERS);
   const [filterDebouncing, setFilterDebouncing] = useState(false);
   const [showRelatedDetails, setShowRelatedDetails] = useState(false);
-  const [filterOptions, setFilterOptions] = useState({ businessUnit: [], productLine: [], productSeries: [], actionConclusion: [] });
+  const [filterOptions, setFilterOptions] = useState(FILTER_OPTIONS_DEFAULT);
   const [pagination, setPagination] = useState({ page: 1, pageSize: SUPPLY_PLAN_PAGE_SIZE, totalItems: 0, totalPages: 1, totalChildItems: 0 });
   const [modelStates, setModelStates] = useState(() => new Map());
   const [horizonMonths, setHorizonMonths] = useState(6);
@@ -383,9 +446,7 @@ export default function SupplyPlanBoard({ token, active }) {
     return () => window.clearTimeout(timeoutId);
   }, [filterDebouncing, filterDrafts, filters, resetTableScroll]);
 
-  const filterQuery = useMemo(() => Object.fromEntries(
-    Object.entries(filters).filter(([, value]) => value)
-  ), [filters]);
+  const filterQuery = useMemo(() => filterQueryValues(filters), [filters]);
 
   const loadSummary = useCallback(async ({ manual = false, page = currentPage, months = horizonMonths } = {}) => {
     const requestId = summaryRequestRef.current + 1;
@@ -407,7 +468,7 @@ export default function SupplyPlanBoard({ token, active }) {
       setHorizonMonths(payload.horizonMonths || months);
       setParams(payload.params);
       setPagination(payload.pagination || { page: 1, pageSize: SUPPLY_PLAN_PAGE_SIZE, totalItems: 0, totalPages: 1, totalChildItems: 0 });
-      setFilterOptions(payload.filterOptions || { businessUnit: [], productLine: [], productSeries: [], actionConclusion: [] });
+      setFilterOptions(payload.filterOptions || FILTER_OPTIONS_DEFAULT);
       setCurrentPage(payload.pagination?.page || 1);
       setPageDraft(String(payload.pagination?.page || 1));
       setMeta({
@@ -678,16 +739,37 @@ export default function SupplyPlanBoard({ token, active }) {
       </div>
 
       <div className="supply-plan-filter-bar" aria-label="供应计划筛选器">
-        {SUPPLY_PLAN_FILTER_FIELDS.map(({ key, label }) => (
+        {PRIMARY_FILTER_FIELDS.map(({ key, label }) => (
           <label key={key}>
             <span>{label}</span>
             <select aria-label={label} value={filterDrafts[key]} onChange={(event) => changeFilter(key, event.target.value)}>
               <option value="">全部{label}</option>
-              {filterOptions[key].map((value) => <option key={value} value={value}>{value}</option>)}
+              {(filterOptions[key] || []).map((value) => <option key={value} value={value}>{value}</option>)}
             </select>
           </label>
         ))}
-        <button type="button" className="ghost" disabled={!Object.values(filterDrafts).some(Boolean)} onClick={() => {
+        <SupplyPlanCheckboxFilter
+          label="库存状态"
+          options={SUPPLY_PLAN_INVENTORY_STATUS_OPTIONS}
+          value={filterDrafts.inventoryStatus}
+          onChange={(value) => changeFilter('inventoryStatus', value)}
+        />
+        <SupplyPlanCheckboxFilter
+          label="是否有销售预测"
+          options={SUPPLY_PLAN_FORECAST_STATUS_OPTIONS}
+          value={filterDrafts.hasForecast}
+          onChange={(value) => changeFilter('hasForecast', value)}
+        />
+        {ACTION_FILTER_FIELD ? (
+          <label>
+            <span>{ACTION_FILTER_FIELD.label}</span>
+            <select aria-label={ACTION_FILTER_FIELD.label} value={filterDrafts.actionConclusion} onChange={(event) => changeFilter('actionConclusion', event.target.value)}>
+              <option value="">全部{ACTION_FILTER_FIELD.label}</option>
+              {(filterOptions.actionConclusion || []).map((value) => <option key={value} value={value}>{value}</option>)}
+            </select>
+          </label>
+        ) : null}
+        <button type="button" className="ghost" disabled={!hasActiveFilters(filterDrafts)} onClick={() => {
           setFilterDrafts(EMPTY_FILTERS);
           setFilters(EMPTY_FILTERS);
           setFilterDebouncing(false);

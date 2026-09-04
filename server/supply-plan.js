@@ -470,6 +470,7 @@ export function buildSupplyPlanData({
         materialName: relatedItem.skuName || text(relatedProduct.materialName),
         productLine: text(relatedProduct.productLine || relatedMapping.productLine) || productLine,
         productSeries: text(relatedProduct.productSeries || relatedMapping.productSeries) || productSeries,
+        productType: text(relatedProduct.productType) || '未匹配',
         model: text(relatedProduct.model || relatedMapping.model) || model || '未匹配型号',
         modelKey,
         productLifecycle: text(relatedFeedback.productLifecycle || relatedFeedback.unifiedStage),
@@ -501,6 +502,7 @@ export function buildSupplyPlanData({
       materialName: text(product.materialName || mapping.latestMaterialName) || item.skuName,
       productLine,
       productSeries,
+      productType: text(product.productType) || '未匹配',
       model: model || '未匹配型号',
       modelKey,
       modelId: modelKey,
@@ -560,22 +562,46 @@ const MODEL_SUM_FIELDS = [
   'purchaseGap'
 ];
 
-const FILTER_FIELDS = ['businessUnit', 'productLine', 'productSeries', 'actionConclusion'];
+const FILTER_FIELDS = ['businessUnit', 'productLine', 'productSeries', 'productType', 'actionConclusion'];
 const ACTION_CONCLUSION_ORDER = ['正常流转', '加急补货', '调整计划', '停采观察'];
+const INVENTORY_STATUS_OPTIONS = ['在库', '在途', '未交付'];
+const FORECAST_STATUS_OPTIONS = ['有', '无'];
 
-function matchesFilters(row, filters = {}, omittedField = '') {
-  return FILTER_FIELDS.every((field) => (
+function selectedFilterValues(value) {
+  const values = Array.isArray(value) ? value : text(value).split(/[,，]/);
+  return [...new Set(values.map(text).filter(Boolean))];
+}
+
+export function matchesSupplyPlanFilters(row, filters = {}, omittedField = '') {
+  const scalarMatches = FILTER_FIELDS.every((field) => (
     field === omittedField || !text(filters[field]) || text(row[field]) === text(filters[field])
   ));
+  if (!scalarMatches) return false;
+
+  const inventoryStatuses = omittedField === 'inventoryStatus' ? [] : selectedFilterValues(filters.inventoryStatus);
+  const inventoryMatches = inventoryStatuses.length === 0 || inventoryStatuses.some((status) => (
+    (status === '在库' && numberValue(row.onHandQty) > 0)
+    || (status === '在途' && numberValue(row.inTransitQty) > 0)
+    || (status === '未交付' && numberValue(row.undeliveredQty) > 0)
+  ));
+  if (!inventoryMatches) return false;
+
+  const forecastStatuses = omittedField === 'hasForecast' ? [] : selectedFilterValues(filters.hasForecast);
+  const rowForecastStatus = numberValue(row.forecastTotal) > 0 ? '有' : '无';
+  return forecastStatuses.length === 0 || forecastStatuses.includes(rowForecastStatus);
 }
 
 function filterOptions(rows, filters) {
-  return Object.fromEntries(FILTER_FIELDS.map((field) => [field, field === 'actionConclusion'
+  return {
+    ...Object.fromEntries(FILTER_FIELDS.map((field) => [field, field === 'actionConclusion'
     ? ACTION_CONCLUSION_ORDER
     : [...new Set(rows
-    .filter((row) => matchesFilters(row, filters, field))
+    .filter((row) => matchesSupplyPlanFilters(row, filters, field))
     .map((row) => text(row[field]))
-    .filter(Boolean))].sort((left, right) => left.localeCompare(right, 'zh-CN'))]));
+    .filter(Boolean))].sort((left, right) => left.localeCompare(right, 'zh-CN'))])),
+    inventoryStatus: INVENTORY_STATUS_OPTIONS,
+    hasForecast: FORECAST_STATUS_OPTIONS
+  };
 }
 
 export function groupSupplyPlanModels(rows = [], weekCount = 0) {
@@ -587,6 +613,7 @@ export function groupSupplyPlanModels(rows = [], weekCount = 0) {
       modelId: key,
       productLine: row.productLine,
       productSeries: row.productSeries,
+      productType: row.productType,
       model: row.model,
       businessUnit: '全量汇总',
       materialCode: '',
@@ -644,7 +671,7 @@ export function paginateSupplyPlanData(payload, {
   filters = {}
 } = {}) {
   const normalizedPageSize = Math.min(10, Math.max(1, Math.trunc(numberValue(pageSize)) || 10));
-  const filteredRows = payload.rows.filter((row) => matchesFilters(row, filters));
+  const filteredRows = payload.rows.filter((row) => matchesSupplyPlanFilters(row, filters));
   const models = groupSupplyPlanModels(filteredRows, payload.weeks.length);
   const totalItems = models.length;
   const totalPages = Math.max(1, Math.ceil(totalItems / normalizedPageSize));
@@ -679,7 +706,7 @@ export function supplyPlanModelDetail(payload, {
   }
   if (!resolvedKey) throw new Error('型号参数不能为空');
   const rows = payload.rows.filter((row) => (
-    supplyPlanModelKey(row) === resolvedKey && matchesFilters(row, filters)
+    supplyPlanModelKey(row) === resolvedKey && matchesSupplyPlanFilters(row, filters)
   ));
   if (!rows.length) throw new Error('未找到对应型号的供应计划明细');
   return {

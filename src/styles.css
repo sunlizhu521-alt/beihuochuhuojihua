@@ -8292,7 +8292,7 @@ th {
   overflow-x: auto;
 }
 
-.supply-plan-filter-bar label {
+.supply-plan-filter-bar > label {
   display: grid;
   gap: 4px;
   min-width: 170px;
@@ -8315,6 +8315,54 @@ th {
 .supply-plan-filter-bar button {
   flex: 0 0 auto;
   height: 32px;
+}
+
+.supply-plan-check-filter {
+  flex: 0 0 auto;
+  min-width: 230px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  color: #526174;
+  font-size: .72rem;
+  font-weight: 700;
+}
+
+.supply-plan-check-filter legend {
+  margin-bottom: 4px;
+  padding: 0;
+}
+
+.supply-plan-check-options {
+  display: flex;
+  height: 32px;
+  align-items: center;
+  gap: 9px;
+  padding: 4px 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  background: #fff;
+  white-space: nowrap;
+}
+
+.supply-plan-check-options label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.supply-plan-check-options input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: #337fc8;
+}
+
+.supply-plan-filter-all {
+  color: #94a3b8;
+  font-weight: 600;
 }
 
 .supply-plan-calculating {

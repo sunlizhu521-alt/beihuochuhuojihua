@@ -32,19 +32,19 @@ const payload = {
   rows: [
     {
       modelKey: '护理床\u001f星云\u001fA1',
-      productLine: '护理床', productSeries: '星云', model: 'A1', businessUnit: '海外事业一部',
+      productLine: '护理床', productSeries: '星云', productType: '成品', model: 'A1', businessUnit: '海外事业一部',
       materialCode: '1001', sku: 'SKU-1', skuName: '护理床A1', productLifecycle: '主力',
       productPositioning: '核心', warehouses: ['101-US-海外仓'], channelKey: 'overseasUs', channel: '海外-美国',
       safetyDays: 30, onHandQty: 10, inTransitQty: 5, undeliveredQty: 3,
-      inventoryRemainingQty: 11, purchaseGap: 8, weeklyForecast: [4, 6], forecastDaily: 2,
+      inventoryRemainingQty: 11, purchaseGap: 8, weeklyForecast: [4, 6], forecastTotal: 10, forecastDaily: 2,
       stockCoverDays: 5, daysUntilShortage: 25, safetyStockQty: 60, actionConclusion: '调整计划'
     },
     {
       modelKey: '轮椅\u001f标准\u001fB1',
-      productLine: '轮椅', productSeries: '标准', model: 'B1', businessUnit: '国内事业部',
+      productLine: '轮椅', productSeries: '标准', productType: '配件', model: 'B1', businessUnit: '国内事业部',
       materialCode: '2001', sku: 'SKU-2', channelKey: 'domestic', channel: '国内',
       onHandQty: 2, inTransitQty: 0, undeliveredQty: 0, inventoryRemainingQty: 1,
-      purchaseGap: 0, weeklyForecast: [1, 1]
+      purchaseGap: 0, weeklyForecast: [1, 1], forecastTotal: 2
     }
   ]
 };
@@ -108,6 +108,15 @@ test('采购执行导出排除关联物料明细', () => {
     { productLine: '护理床', productSeries: '星云', model: 'A1', materialCode: '1001', purchaseGap: 10 },
     { isRelatedDetail: true, productLine: '护理床', productSeries: '星云', model: 'A1', materialCode: '1002', purchaseGap: 99 }
   ] } });
+  assert.equal(data.rows.length, 1);
+  assert.equal(data.rows[0][3], '1001');
+});
+
+test('采购执行导出遵循新增产品分类、库存状态和预测筛选', () => {
+  const data = buildSupplyPlanPurchaseExportData({
+    supplyPlanData: payload,
+    filters: { productType: '成品', inventoryStatus: ['在途'], hasForecast: ['有'] }
+  });
   assert.equal(data.rows.length, 1);
   assert.equal(data.rows[0][3], '1001');
 });

@@ -1,5 +1,6 @@
 import xlsx from 'xlsx';
 import { PassThrough } from 'node:stream';
+import { matchesSupplyPlanFilters } from './supply-plan.js';
 
 export const SUPPLY_PLAN_EXPORT_METRICS = [
   '销售预测',
@@ -106,12 +107,6 @@ function dateAfterDays(value, days) {
   return date;
 }
 
-function matchesFilters(row, filters = {}) {
-  return ['businessUnit', 'productLine', 'productSeries', 'actionConclusion'].every((field) => (
-    !text(filters[field]) || text(row?.[field]) === text(filters[field])
-  ));
-}
-
 function metricWeekValue(row, metric, weekIndex) {
   if (metric === '销售预测') return numberValue(row.weeklyForecast?.[weekIndex]);
   if (weekIndex > 0) return '';
@@ -141,7 +136,7 @@ export function buildSupplyPlanExportData({
 } = {}) {
   const weeks = Array.isArray(supplyPlanData.weeks) ? supplyPlanData.weeks : [];
   const rows = (Array.isArray(supplyPlanData.rows) ? supplyPlanData.rows : [])
-    .filter((row) => !row.isRelatedDetail && matchesFilters(row, filters));
+    .filter((row) => !row.isRelatedDetail && matchesSupplyPlanFilters(row, filters));
   const assignments = assignmentMap(assignmentRows);
   const detailRows = [];
   const purchaseRows = [];
@@ -188,7 +183,7 @@ export function buildSupplyPlanExportData({
 
 export function buildSupplyPlanPurchaseExportData({ supplyPlanData = {}, filters = {} } = {}) {
   const rows = (Array.isArray(supplyPlanData.rows) ? supplyPlanData.rows : [])
-    .filter((row) => !row.isRelatedDetail && matchesFilters(row, filters) && numberValue(row.purchaseGap) > 0)
+    .filter((row) => !row.isRelatedDetail && matchesSupplyPlanFilters(row, filters) && numberValue(row.purchaseGap) > 0)
     .map((row) => [
       row.productLine,
       row.productSeries,

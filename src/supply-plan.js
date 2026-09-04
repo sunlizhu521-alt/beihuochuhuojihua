@@ -45,8 +45,11 @@ export const SUPPLY_PLAN_FILTER_FIELDS = Object.freeze([
   { key: 'businessUnit', label: '事业部' },
   { key: 'productLine', label: '产品线' },
   { key: 'productSeries', label: '系列' },
+  { key: 'productType', label: '销售产品分类' },
   { key: 'actionConclusion', label: '动作结论' }
 ]);
+export const SUPPLY_PLAN_INVENTORY_STATUS_OPTIONS = Object.freeze(['在库', '在途', '未交付']);
+export const SUPPLY_PLAN_FORECAST_STATUS_OPTIONS = Object.freeze(['有', '无']);
 const ACTION_CONCLUSION_ORDER = ['正常流转', '加急补货', '调整计划', '停采观察'];
 
 export function supplyPlanVirtualWindow(items = [], scrollTop = 0, viewportHeight = 0, overscanHeight = 0) {
@@ -163,13 +166,31 @@ export function groupSupplyPlanRows(rows = [], weekCount = Math.max(0, ...rows.m
 }
 
 export function matchesSupplyPlanFilters(row, filters = {}, omit = '') {
-  return SUPPLY_PLAN_FILTER_FIELDS.every(({ key }) => (
+  const scalarMatches = SUPPLY_PLAN_FILTER_FIELDS.every(({ key }) => (
     key === omit || !text(filters[key]) || text(row?.[key]) === text(filters[key])
   ));
+  if (!scalarMatches) return false;
+
+  const inventoryStatuses = omit === 'inventoryStatus'
+    ? []
+    : (Array.isArray(filters.inventoryStatus) ? filters.inventoryStatus : text(filters.inventoryStatus).split(/[,，]/)).map(text).filter(Boolean);
+  const inventoryMatches = inventoryStatuses.length === 0 || inventoryStatuses.some((status) => (
+    (status === '在库' && numberValue(row?.onHandQty) > 0)
+    || (status === '在途' && numberValue(row?.inTransitQty) > 0)
+    || (status === '未交付' && numberValue(row?.undeliveredQty) > 0)
+  ));
+  if (!inventoryMatches) return false;
+
+  const forecastStatuses = omit === 'hasForecast'
+    ? []
+    : (Array.isArray(filters.hasForecast) ? filters.hasForecast : text(filters.hasForecast).split(/[,，]/)).map(text).filter(Boolean);
+  const forecastStatus = numberValue(row?.forecastTotal) > 0 ? '有' : '无';
+  return forecastStatuses.length === 0 || forecastStatuses.includes(forecastStatus);
 }
 
 export function buildSupplyPlanFilterOptions(rows = [], filters = {}) {
-  return Object.fromEntries(SUPPLY_PLAN_FILTER_FIELDS.map(({ key }) => {
+  return {
+    ...Object.fromEntries(SUPPLY_PLAN_FILTER_FIELDS.map(({ key }) => {
     if (key === 'actionConclusion') return [key, ACTION_CONCLUSION_ORDER];
     const values = new Set();
     rows.forEach((row) => {
@@ -178,7 +199,10 @@ export function buildSupplyPlanFilterOptions(rows = [], filters = {}) {
       if (value) values.add(value);
     });
     return [key, [...values].sort((left, right) => left.localeCompare(right, 'zh-CN'))];
-  }));
+    })),
+    inventoryStatus: SUPPLY_PLAN_INVENTORY_STATUS_OPTIONS,
+    hasForecast: SUPPLY_PLAN_FORECAST_STATUS_OPTIONS
+  };
 }
 
 export function filterSupplyPlanRows(rows = [], filters = {}) {

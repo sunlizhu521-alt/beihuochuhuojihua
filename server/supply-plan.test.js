@@ -55,7 +55,7 @@ test('供应计划按事业部物料聚合18和19并接入21周预测及维度',
       ] }
     },
     dimensionData: {
-      productCategory: [{ materialCode: '1001', productLine: '护理床', productSeries: '星云', model: 'A1' }],
+      productCategory: [{ materialCode: '1001', productLine: '护理床', productSeries: '星云', model: 'A1', productType: '成品' }],
       businessUnitFeedback: [{ businessUnit: '海外事业一部', materialCode: '1001', unifiedStage: '主力', unifiedPositioning: '核心' }],
       warehouseName: [{ warehouseName: '美国仓', marketplace: 'US', level1WarehouseCategory: '海外仓' }]
     },
@@ -70,6 +70,7 @@ test('供应计划按事业部物料聚合18和19并接入21周预测及维度',
   assert.equal(payload.rows[0].operator, '张三');
   assert.equal(payload.rows[0].productLifecycle, '主力');
   assert.equal(payload.rows[0].productPositioning, '核心');
+  assert.equal(payload.rows[0].productType, '成品');
   assert.equal(payload.rows[0].channelKey, 'overseasUs');
   assert.equal(payload.rows[0].safetyDays, 175);
   assert.equal(payload.rows[0].weeklyForecast.reduce((sum, value) => sum + value, 0), 70);
@@ -175,6 +176,27 @@ test('服务端先按父型号分组再分页且每页固定最多10个', () => 
   assert.deepEqual(page.pagination, {
     page: 2, pageSize: 10, totalItems: 25, totalPages: 3, totalChildItems: 26
   });
+});
+
+test('服务端支持销售产品分类、库存状态任一匹配和销售预测筛选', () => {
+  const rows = [
+    { modelKey: '线\u001f系列\u001fM1', productLine: '线', productSeries: '系列', productType: '成品', model: 'M1', materialCode: '1', onHandQty: 5, inTransitQty: 0, undeliveredQty: 0, forecastTotal: 0 },
+    { modelKey: '线\u001f系列\u001fM2', productLine: '线', productSeries: '系列', productType: '配件', model: 'M2', materialCode: '2', onHandQty: 0, inTransitQty: 6, undeliveredQty: 0, forecastTotal: 12 },
+    { modelKey: '线\u001f系列\u001fM3', productLine: '线', productSeries: '系列', productType: '成品', model: 'M3', materialCode: '3', onHandQty: 0, inTransitQty: 0, undeliveredQty: 7, forecastTotal: 0 },
+    { modelKey: '线\u001f系列\u001fM4', productLine: '线', productSeries: '系列', productType: '成品', model: 'M4', materialCode: '4', onHandQty: 0, inTransitQty: 0, undeliveredQty: 0, forecastTotal: 8 }
+  ];
+  const payload = { ok: true, rows, weeks: [] };
+  const filtered = paginateSupplyPlanData(payload, {
+    filters: { productType: '成品', inventoryStatus: ['在库', '未交付'], hasForecast: ['无'] }
+  });
+  assert.deepEqual(filtered.rows.map((row) => row.model), ['M1', 'M3']);
+  assert.equal(filtered.pagination.totalChildItems, 2);
+
+  const unfiltered = paginateSupplyPlanData(payload, { filters: { inventoryStatus: [], hasForecast: [] } });
+  assert.equal(unfiltered.pagination.totalItems, 4);
+  assert.deepEqual(unfiltered.filterOptions.productType, ['成品', '配件']);
+  assert.deepEqual(unfiltered.filterOptions.inventoryStatus, ['在库', '在途', '未交付']);
+  assert.deepEqual(unfiltered.filterOptions.hasForecast, ['有', '无']);
 });
 
 test('型号详情使用产品线系列型号唯一键避免同名串数据', () => {

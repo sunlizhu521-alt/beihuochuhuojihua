@@ -1954,6 +1954,9 @@ app.get('/api/supply-plan/summary', requireAuth, requirePage('supplyPlanBoard'),
         businessUnit: req.query.businessUnit,
         productLine: req.query.productLine,
         productSeries: req.query.productSeries,
+        productType: req.query.productType,
+        inventoryStatus: req.query.inventoryStatus,
+        hasForecast: req.query.hasForecast,
         actionConclusion: req.query.actionConclusion
       }
     });
@@ -1980,6 +1983,9 @@ app.get('/api/supply-plan/model-detail', requireAuth, requirePage('supplyPlanBoa
         businessUnit: req.query.businessUnit,
         productLine: req.query.productLine,
         productSeries: req.query.productSeries,
+        productType: req.query.productType,
+        inventoryStatus: req.query.inventoryStatus,
+        hasForecast: req.query.hasForecast,
         actionConclusion: req.query.actionConclusion
       }
     });
@@ -2000,6 +2006,9 @@ app.get('/api/supply-plan/export', requireAuth, requirePage('supplyPlanBoard'), 
         businessUnit: req.query.businessUnit,
         productLine: req.query.productLine,
         productSeries: req.query.productSeries,
+        productType: req.query.productType,
+        inventoryStatus: req.query.inventoryStatus,
+        hasForecast: req.query.hasForecast,
         actionConclusion: req.query.actionConclusion
       }
     });
