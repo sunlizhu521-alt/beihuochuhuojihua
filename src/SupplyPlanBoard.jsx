@@ -6,6 +6,7 @@ import {
   SUPPLY_PLAN_PAGE_SIZE,
   SUPPLY_PLAN_ROW_TYPES,
   buildSupplyPlanWeeks,
+  normalizeSupplyPlanBusinessUnit,
   supplyPlanRowKey,
   supplyPlanVirtualWindow
 } from './supply-plan.js';
@@ -627,7 +628,10 @@ export default function SupplyPlanBoard({ token, active }) {
     const items = [{
       key: `parent-${group.modelKey}`,
       kind: 'data',
-      row: group,
+      row: {
+        ...group,
+        normalizedBusinessUnit: normalizeSupplyPlanBusinessUnit(group.businessUnit)
+      },
       level: 'parent',
       expanded,
       childCount: group.childCount,
@@ -639,7 +643,10 @@ export default function SupplyPlanBoard({ token, active }) {
       items.push({
         key: `child-${group.modelKey}-${supplyPlanRowKey(child)}`,
         kind: 'data',
-        row: child,
+        row: {
+          ...child,
+          normalizedBusinessUnit: normalizeSupplyPlanBusinessUnit(child.businessUnit)
+        },
         level: 'child',
         expanded: false,
         childCount: 0,

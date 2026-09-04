@@ -4,6 +4,7 @@ import {
   applySupplyPlanImport,
   buildSupplyPlanFilterOptions,
   buildSupplyPlanWeeks,
+  normalizeSupplyPlanBusinessUnit,
   calculateSupplyPlanRow,
   filterSupplyPlanRows,
   groupSupplyPlanRows,
@@ -101,6 +102,21 @@ test('供应计划按事业部、产品线和系列精确筛选', () => {
     filterSupplyPlanRows(sourceRows, { businessUnit: '国内事业部', productLine: '护理床', productSeries: 'A系列' }).map((row) => row.materialCode),
     ['1']
   );
+});
+
+test('事业部筛选按星号前名称合并选项并匹配原始明细', () => {
+  const sourceRows = [
+    { businessUnit: '国内事业部', materialCode: '1' },
+    { businessUnit: '国内事业部*TEMU业务部', materialCode: '2' },
+    { businessUnit: '供应链管理中心＊采购部', materialCode: '3' }
+  ];
+  assert.equal(normalizeSupplyPlanBusinessUnit('国内事业部*TEMU业务部'), '国内事业部');
+  assert.equal(normalizeSupplyPlanBusinessUnit('供应链管理中心＊采购部'), '供应链管理中心');
+  assert.deepEqual(
+    filterSupplyPlanRows(sourceRows, { businessUnit: '国内事业部' }).map((row) => row.materialCode),
+    ['1', '2']
+  );
+  assert.deepEqual(buildSupplyPlanFilterOptions(sourceRows).businessUnit, ['供应链管理中心', '国内事业部']);
 });
 
 test('供应计划支持动作结论筛选', () => {

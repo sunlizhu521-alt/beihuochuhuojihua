@@ -5,6 +5,12 @@ function text(value) {
   return String(value ?? '').normalize('NFKC').trim();
 }
 
+export function normalizeSupplyPlanBusinessUnit(value) {
+  const original = text(value);
+  const normalized = text(original.split('*')[0]);
+  return normalized || original;
+}
+
 function numberValue(value) {
   const parsed = Number.parseFloat(text(value).replace(/,/g, ''));
   return Number.isFinite(parsed) ? parsed : 0;
@@ -464,6 +470,7 @@ export function buildSupplyPlanData({
         relationLabel: '关联',
         latestMaterialCode: item.materialCode,
         businessUnit: relatedItem.businessUnit,
+        normalizedBusinessUnit: normalizeSupplyPlanBusinessUnit(relatedItem.businessUnit),
         materialCode: relatedItem.materialCode,
         sku: relatedItem.sku || text(relatedProduct.sku),
         skuName: relatedItem.skuName || text(relatedProduct.materialName),
@@ -496,6 +503,7 @@ export function buildSupplyPlanData({
     }).sort((left, right) => left.materialCode.localeCompare(right.materialCode, 'zh-CN', { numeric: true }));
     return withSupplyPlanCalculations({
       businessUnit: item.businessUnit,
+      normalizedBusinessUnit: normalizeSupplyPlanBusinessUnit(item.businessUnit),
       materialCode: item.materialCode,
       sku: text(product.sku || mapping.latestSku) || item.sku,
       skuName: text(product.materialName || mapping.latestMaterialName) || item.skuName,
@@ -573,9 +581,14 @@ function selectedFilterValues(value) {
 }
 
 export function matchesSupplyPlanFilters(row, filters = {}, omittedField = '') {
-  const scalarMatches = FILTER_FIELDS.every((field) => (
-    field === omittedField || !text(filters[field]) || text(row[field]) === text(filters[field])
-  ));
+  const scalarMatches = FILTER_FIELDS.every((field) => {
+    if (field === omittedField || !text(filters[field])) return true;
+    if (field === 'businessUnit') {
+      return normalizeSupplyPlanBusinessUnit(row.normalizedBusinessUnit || row.businessUnit)
+        === normalizeSupplyPlanBusinessUnit(filters[field]);
+    }
+    return text(row[field]) === text(filters[field]);
+  });
   if (!scalarMatches) return false;
 
   const inventoryStatuses = omittedField === 'inventoryStatus' ? [] : selectedFilterValues(filters.inventoryStatus);
@@ -597,7 +610,9 @@ function filterOptions(rows, filters) {
     ? ACTION_CONCLUSION_ORDER
     : [...new Set(rows
     .filter((row) => matchesSupplyPlanFilters(row, filters, field))
-    .map((row) => text(row[field]))
+    .map((row) => field === 'businessUnit'
+      ? normalizeSupplyPlanBusinessUnit(row.normalizedBusinessUnit || row.businessUnit)
+      : text(row[field]))
     .filter(Boolean))].sort((left, right) => left.localeCompare(right, 'zh-CN'))])),
     inventoryStatus: INVENTORY_STATUS_OPTIONS,
     hasForecast: FORECAST_STATUS_OPTIONS

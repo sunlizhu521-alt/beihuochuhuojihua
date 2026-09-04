@@ -42,10 +42,10 @@ export function buildSupplyPlanWeeks(months = 6, now = new Date()) {
 }
 
 export const SUPPLY_PLAN_FILTER_FIELDS = Object.freeze([
-  { key: 'businessUnit', label: '事业部' },
   { key: 'productLine', label: '产品线' },
   { key: 'productSeries', label: '系列' },
   { key: 'productType', label: '销售产品分类' },
+  { key: 'businessUnit', label: '事业部' },
   { key: 'actionConclusion', label: '动作结论' }
 ]);
 export const SUPPLY_PLAN_INVENTORY_STATUS_OPTIONS = Object.freeze(['在库', '在途', '未交付']);
@@ -77,6 +77,12 @@ export function supplyPlanVirtualWindow(items = [], scrollTop = 0, viewportHeigh
 
 function text(value) {
   return String(value ?? '').normalize('NFKC').trim();
+}
+
+export function normalizeSupplyPlanBusinessUnit(value) {
+  const original = text(value);
+  const normalized = text(original.split('*')[0]);
+  return normalized || original;
 }
 
 function headerText(value) {
@@ -166,9 +172,14 @@ export function groupSupplyPlanRows(rows = [], weekCount = Math.max(0, ...rows.m
 }
 
 export function matchesSupplyPlanFilters(row, filters = {}, omit = '') {
-  const scalarMatches = SUPPLY_PLAN_FILTER_FIELDS.every(({ key }) => (
-    key === omit || !text(filters[key]) || text(row?.[key]) === text(filters[key])
-  ));
+  const scalarMatches = SUPPLY_PLAN_FILTER_FIELDS.every(({ key }) => {
+    if (key === omit || !text(filters[key])) return true;
+    if (key === 'businessUnit') {
+      return normalizeSupplyPlanBusinessUnit(row?.normalizedBusinessUnit || row?.businessUnit)
+        === normalizeSupplyPlanBusinessUnit(filters[key]);
+    }
+    return text(row?.[key]) === text(filters[key]);
+  });
   if (!scalarMatches) return false;
 
   const inventoryStatuses = omit === 'inventoryStatus'
@@ -195,7 +206,9 @@ export function buildSupplyPlanFilterOptions(rows = [], filters = {}) {
     const values = new Set();
     rows.forEach((row) => {
       if (!matchesSupplyPlanFilters(row, filters, key)) return;
-      const value = text(row?.[key]);
+      const value = key === 'businessUnit'
+        ? normalizeSupplyPlanBusinessUnit(row?.normalizedBusinessUnit || row?.businessUnit)
+        : text(row?.[key]);
       if (value) values.add(value);
     });
     return [key, [...values].sort((left, right) => left.localeCompare(right, 'zh-CN'))];

@@ -6,6 +6,7 @@ import {
   buildSupplyPlanWeeks,
   getActionConclusion,
   groupSupplyPlanModels,
+  normalizeSupplyPlanBusinessUnit,
   paginateSupplyPlanData,
   prepareSupplyPlanBeihuoPush,
   splitForecastToWeeks,
@@ -197,6 +198,20 @@ test('服务端支持销售产品分类、库存状态任一匹配和销售预�
   assert.deepEqual(unfiltered.filterOptions.productType, ['成品', '配件']);
   assert.deepEqual(unfiltered.filterOptions.inventoryStatus, ['在库', '在途', '未交付']);
   assert.deepEqual(unfiltered.filterOptions.hasForecast, ['有', '无']);
+});
+
+test('服务端事业部筛选合并星号后的下级名称', () => {
+  const rows = [
+    { modelKey: '线\u001f系列\u001fM1', productLine: '线', productSeries: '系列', model: 'M1', businessUnit: '国内事业部', materialCode: '1' },
+    { modelKey: '线\u001f系列\u001fM2', productLine: '线', productSeries: '系列', model: 'M2', businessUnit: '国内事业部*TEMU业务部', materialCode: '2' },
+    { modelKey: '线\u001f系列\u001fM3', productLine: '线', productSeries: '系列', model: 'M3', businessUnit: '供应链管理中心*采购部', materialCode: '3' }
+  ];
+  const page = paginateSupplyPlanData({ ok: true, rows, weeks: [] }, {
+    filters: { businessUnit: '国内事业部' }
+  });
+  assert.equal(normalizeSupplyPlanBusinessUnit('国内事业部*TEMU业务部'), '国内事业部');
+  assert.deepEqual(page.rows.map((row) => row.model), ['M1', 'M2']);
+  assert.deepEqual(page.filterOptions.businessUnit, ['供应链管理中心', '国内事业部']);
 });
 
 test('型号详情使用产品线系列型号唯一键避免同名串数据', () => {
