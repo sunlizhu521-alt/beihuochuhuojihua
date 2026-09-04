@@ -9,6 +9,7 @@ import { loadSlotMapping, matchRememberedSlotMapping, saveSlotMapping } from './
 
 const InventoryCalculationGuide = React.lazy(() => import('./InventoryCalculationGuide.jsx'));
 const SupplyPlanBoard = React.lazy(() => import('./SupplyPlanBoard.jsx'));
+const StockingPlanPage = React.lazy(() => import('./StockingPlanPage.jsx'));
 const FullInventorySummaryPage = React.lazy(() => import('./FullInventorySummaryPage.jsx'));
 
 installGlobalFetchProgress();
@@ -17,6 +18,7 @@ const ACTIVE_PAGE_KEY = 'gendanjinduActivePage';
 
 const PAGE_ORDER = [
   'supplyPlanBoard',
+  'stockingPlan',
   'fullInventorySummary',
   'inventorySummaryLibrary',
   'dimensionLibrary'
@@ -24,13 +26,14 @@ const PAGE_ORDER = [
 
 const PAGE_LABELS = {
   supplyPlanBoard: '供应计划工具',
+  stockingPlan: '备货需求计划',
   fullInventorySummary: '全量库存汇总',
   inventorySummaryLibrary: '底表文件',
   dimensionLibrary: '维度表库'
 };
 
 const NAV_GROUPS = [
-  { title: '备货计划', pages: ['supplyPlanBoard'] },
+  { title: '备货计划', pages: ['supplyPlanBoard', 'stockingPlan'] },
   { title: '全量库存', pages: ['fullInventorySummary'] },
   { title: '库存数据', pages: ['inventorySummaryLibrary'] },
   { title: '维护数据', pages: ['dimensionLibrary'] }
@@ -3781,6 +3784,7 @@ function App() {
         {message && <p className="message">{message}</p>}
         {shouldMount('fullInventorySummary') && <PagePane page="fullInventorySummary" activeTab={activeTab}><React.Suspense fallback={<div className="loading-fallback">加载中...</div>}><FullInventorySummaryPage token={token} active={activeTab === 'fullInventorySummary'} /></React.Suspense></PagePane>}
         {shouldMount('supplyPlanBoard') && <PagePane page="supplyPlanBoard" activeTab={activeTab}><React.Suspense fallback={<div className="loading-fallback">加载中...</div>}><SupplyPlanBoard token={token} active={activeTab === 'supplyPlanBoard'} /></React.Suspense></PagePane>}
+        {shouldMount('stockingPlan') && <PagePane page="stockingPlan" activeTab={activeTab}><React.Suspense fallback={<div className="loading-fallback">加载中...</div>}><StockingPlanPage token={token} active={activeTab === 'stockingPlan'} /></React.Suspense></PagePane>}
         {shouldMount('inventorySummaryLibrary') && <PagePane page="inventorySummaryLibrary" activeTab={activeTab}><DimensionLibrary token={token} reloadDemands={reloadDemands} reloadDemandData={false} setMessage={setMessage} title="底表文件" slots={INVENTORY_SUMMARY_LIBRARY_SLOTS} gridColumns={4} /></PagePane>}
         {shouldMount('dimensionLibrary') && <PagePane page="dimensionLibrary" activeTab={activeTab}><DimensionLibrary token={token} reloadDemands={reloadDemands} setMessage={setMessage} gridColumns={3} /></PagePane>}
         <PersistentHorizontalScrollbar activeTab={activeTab} />

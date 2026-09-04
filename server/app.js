@@ -65,6 +65,7 @@ const ALL_PAGES = [
   'inventorySummary',
   'inventoryRisk',
   'supplyPlanBoard',
+  'stockingPlan',
   'productArchive',
   'businessUnitFeedback',
   'inventoryPurchase',
@@ -92,6 +93,7 @@ const PAGE_LABELS = {
   inventorySummary: '库存汇总',
   inventoryRisk: '供应计划分析',
   supplyPlanBoard: '供应计划工具',
+  stockingPlan: '备货需求计划',
   productArchive: '产品档案',
   businessUnitFeedback: '产品数据',
   inventoryPurchase: '采购未交付',
@@ -1970,6 +1972,32 @@ app.get('/api/supply-plan/summary', requireAuth, requirePage('supplyPlanBoard'),
   } catch (error) {
     return res.status(400).json({ error: error.message || '供应计划数据生成失败' });
   }
+});
+
+app.get('/api/stocking-plan/source', requireAuth, requirePage('stockingPlan'), (_req, res) => {
+  const sourceSlots = ['inventorySummaryFile18', 'inventorySummaryFile19', 'inventorySummaryFile21', 'productCategory'];
+  const sourceMeta = Object.fromEntries(sourceSlots.map((slotId) => {
+    const record = get(
+      'SELECT file_name, updated_at, applied FROM dimension_files WHERE slot_id = ?',
+      [slotId]
+    );
+    return [slotId, {
+      fileName: record?.file_name || '',
+      updatedAt: record?.updated_at || '',
+      applied: Boolean(record?.applied)
+    }];
+  }));
+  const updatedAt = Object.values(sourceMeta).map((item) => item.updatedAt).filter(Boolean).sort().at(-1) || '';
+  res.setHeader('Cache-Control', 'no-store');
+  return res.json({
+    ok: true,
+    updatedAt,
+    sourceMeta,
+    inventoryRows: getDimensionRows('inventorySummaryFile18'),
+    undeliveredRows: getDimensionRows('inventorySummaryFile19'),
+    forecastRows: getDimensionRows('inventorySummaryFile21'),
+    productRows: getDimensionRows('productCategory')
+  });
 });
 
 app.get('/api/supply-plan/model-detail', requireAuth, requirePage('supplyPlanBoard'), (req, res) => {

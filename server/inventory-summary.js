@@ -81,7 +81,7 @@ const FIELD_ALIASES = {
   lingxingSku: ['*SKU', 'SKU', '领星SKU', '领星MSKU', 'MSKU'],
   month: ['下单月份'],
   remainingQty: ['备货剩余数量', '未交付数量'],
-  finishedQty: ['完工未发产品'],
+  finishedQty: ['已完工未发货', '完工未发货', '完工未发产品'],
   unpreparedQty: ['已下单未备料未生产'],
   preparedNotStartedQty: ['已备料未生产'],
   inProductionQty: ['生产中产品'],
@@ -205,7 +205,7 @@ const SLOT_SCHEMAS = {
   },
   inventorySummaryFile19: {
     required: ['businessUnit', 'materialCode', 'undeliveredQty'],
-    fields: ['businessUnit', 'operator', 'materialCode', 'undeliveredQty']
+    fields: ['businessUnit', 'operator', 'materialCode', 'undeliveredQty', 'finishedQty']
   },
   inventorySummaryFile21: {
     required: ['businessUnit', 'materialCode', 'month1', 'month2', 'month3', 'month4', 'month5', 'month6'],
@@ -439,6 +439,13 @@ function inventoryFactProductType(product, ...warehouses) {
 }
 
 function hasZeroInventoryQuantity(row, slotId) {
+  if (slotId === 'inventorySummaryFile19') {
+    return ['undeliveredQty', 'finishedQty'].every((field) => safeNumber(row?.[field]).value === 0);
+  }
+  if (slotId === 'inventorySummaryFile21') {
+    return Array.from({ length: 6 }, (_, index) => `month${index + 1}`)
+      .every((field) => safeNumber(row?.[field]).value === 0);
+  }
   const field = INVENTORY_QUANTITY_FIELDS[slotId];
   if (!field) return false;
   const quantity = safeNumber(row?.[field]);

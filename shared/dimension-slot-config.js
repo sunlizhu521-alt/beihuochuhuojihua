@@ -103,9 +103,9 @@ export const INVENTORY_SUMMARY_LIBRARY_SLOTS = [
   },
   {
     id: 'inventorySummaryFile19', title: '未交付数据',
-    fields: [['businessUnit', '事业部'], ['operator', '运营'], ['materialCode', '物料编码'], ['undeliveredQty', '未交付数量']],
+    fields: [['businessUnit', '事业部'], ['operator', '运营'], ['materialCode', '物料编码'], ['undeliveredQty', '未交付数量'], ['finishedQty', '已完工未发货']],
     requiredFields: ['businessUnit', 'materialCode', 'undeliveredQty'],
-    mappingNote: '按“事业部 + 物料编码”核算，运营用于责任人复核。'
+    mappingNote: '按“事业部 + 物料编码”核算，运营用于责任人复核；已完工未发货用于备货需求抵扣。'
   },
   {
     id: 'inventorySummaryFile20', title: '销售数据',

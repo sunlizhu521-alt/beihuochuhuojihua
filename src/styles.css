@@ -8569,6 +8569,171 @@ th {
   background: #f8fafc;
 }
 
+.stocking-plan-page {
+  color: #243247;
+}
+
+.stocking-plan-heading {
+  align-items: flex-end;
+  gap: 16px;
+}
+
+.stocking-plan-heading p {
+  margin: 6px 0 0;
+  color: #64748b;
+}
+
+.stocking-plan-view-toggle {
+  display: inline-flex;
+  flex: 0 0 auto;
+  padding: 3px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.stocking-plan-view-toggle button {
+  min-width: 78px;
+  padding: 7px 14px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #475569;
+  box-shadow: none;
+}
+
+.stocking-plan-view-toggle button.active {
+  background: #337fc8;
+  color: #fff;
+}
+
+.stocking-plan-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 12px 0;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.stocking-plan-table-wrap {
+  max-height: calc(100vh - 240px);
+  overflow: auto;
+  border: 1px solid #dce3ec;
+  border-radius: 8px;
+  background: #fff;
+  scrollbar-gutter: stable;
+}
+
+.stocking-plan-table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 12px;
+}
+
+.stocking-plan-table th,
+.stocking-plan-table td {
+  min-width: 92px;
+  height: 34px;
+  padding: 6px 8px;
+  border-right: 1px solid #dce3ec;
+  border-bottom: 1px solid #dce3ec;
+  background: #fff;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.stocking-plan-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: #337fc8;
+  color: #fff;
+  font-weight: 800;
+}
+
+.stocking-plan-table tbody tr:nth-child(even) td {
+  background: #f8fbff;
+}
+
+.stocking-plan-table tbody tr:hover td {
+  background: #edf6ff;
+}
+
+.stocking-plan-table .numeric-cell {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.stocking-plan-table .stocking-plan-name-cell {
+  max-width: 220px;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+}
+
+.stocking-plan-table .stocking-plan-week-column {
+  min-width: 76px;
+}
+
+.stocking-plan-table .stocking-plan-week-column strong,
+.stocking-plan-table .stocking-plan-week-column small {
+  display: block;
+}
+
+.stocking-plan-table .stocking-plan-week-column small {
+  margin-top: 2px;
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.stocking-plan-table .stocking-plan-purchase-cell {
+  vertical-align: middle;
+  background: #fff5eb;
+  color: #c2410c;
+  font-weight: 800;
+}
+
+.stocking-plan-date-input {
+  width: 132px;
+  min-width: 132px;
+  padding: 5px 7px;
+  border: 1px solid #cbd5e1;
+  border-radius: 5px;
+  background: #fff;
+  color: #334155;
+}
+
+.stocking-plan-empty {
+  display: grid;
+  place-items: center;
+  gap: 8px;
+  min-height: 220px;
+  padding: 32px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 10px;
+  background: #fafcff;
+  color: #64748b;
+  text-align: center;
+}
+
+.stocking-plan-empty strong {
+  color: #334155;
+  font-size: 16px;
+}
+
+.stocking-plan-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 10px;
+  color: #64748b;
+  font-size: 12px;
+}
+
 .supply-plan-table .supply-plan-related-details-column {
   width: 360px;
   min-width: 360px;
