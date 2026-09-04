@@ -330,6 +330,23 @@ const SupplyPlanMetricRows = memo(function SupplyPlanMetricRows({
   ));
 });
 
+function ActionConclusionRules() {
+  return (
+    <details className="supply-plan-action-rules" open>
+      <summary>动作结论判定规则</summary>
+      <div className="supply-plan-action-rules-content">
+        <p><strong>正常流转：</strong>未触发加急补货、调整计划或停采观察条件，按正常节奏持续监控。</p>
+        <p><strong>加急补货：</strong>预测剩余库存小于 0；或建议采购数量大于 0 且距缺货天数不超过 14 天，建议立即下单补货。</p>
+        <p><strong>调整计划：</strong>建议采购数量大于 0，且距缺货天数大于 14 天、不超过 45 天，需重新评估需求与供应节奏。</p>
+        <p><strong>停采观察：</strong>建议采购数量为 0、在库量大于安全库存数量的 2 倍，且连续 4 周销售预测均为 0，建议暂停采购并观察库存消耗。</p>
+        <p className="supply-plan-action-rules-note">
+          距缺货天数 = 全链路天数 − 库存可销天数（最低按 0 计算；预测剩余库存小于 0 时按 0 计算）。判定优先级：停采观察 → 加急补货 → 调整计划 → 正常流转。
+        </p>
+      </div>
+    </details>
+  );
+}
+
 function RouteSettings({ params, saving, meta, horizonMonths, onHorizonChange, onChange, onSave }) {
   return (
     <section className="supply-plan-route-wrap">
@@ -389,6 +406,7 @@ function RouteSettings({ params, saving, meta, horizonMonths, onHorizonChange, o
         </table>
       </div>
       <p className="supply-plan-formula-note">现货天数 = 在库量可销天数 + 发货到上架 + 海运/运输 + 订舱/预约；全链路天数 = 现货天数 + 平均交期 + 合同签订。</p>
+      <ActionConclusionRules />
     </section>
   );
 }

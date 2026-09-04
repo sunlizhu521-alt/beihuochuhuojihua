@@ -8254,6 +8254,36 @@ th {
   min-width: 48px;
 }
 
+.supply-plan-action-rules {
+  margin-top: 10px;
+  padding: 9px 12px;
+  border-left: 3px solid #1890ff;
+  border-radius: 0 4px 4px 0;
+  background: #fafafa;
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.supply-plan-action-rules summary {
+  color: #334155;
+  font-weight: 700;
+  cursor: pointer;
+  user-select: none;
+}
+
+.supply-plan-action-rules-content {
+  margin-top: 7px;
+}
+
+.supply-plan-action-rules-content p {
+  margin: 3px 0;
+}
+
+.supply-plan-action-rules-note {
+  color: #64748b;
+}
+
 .supply-plan-toolbar {
   margin: 0;
   align-items: center;
