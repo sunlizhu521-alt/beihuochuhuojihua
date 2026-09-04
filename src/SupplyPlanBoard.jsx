@@ -33,6 +33,11 @@ const METRIC_BLOCK_HEIGHT = 174;
 const STATUS_ROW_HEIGHT = 44;
 const VERTICAL_OVERSCAN_HEIGHT = METRIC_BLOCK_HEIGHT * 10;
 const RELATED_DETAILS_COLUMN_WIDTH = 360;
+const RELATED_DETAILS_COLUMN = Object.freeze({
+  key: 'relatedDetails',
+  label: '关联物料明细',
+  width: RELATED_DETAILS_COLUMN_WIDTH
+});
 const SUMMARY_FIXED_COLUMNS = [
   { key: 'productLine', label: '产品线', width: 92 },
   { key: 'productSeries', label: '系列', width: 92 },
@@ -254,7 +259,6 @@ const SupplyPlanMetricRows = memo(function SupplyPlanMetricRows({
   expanded = false,
   childCount = 0,
   detailLoading = false,
-  showRelatedDetails = false,
   onToggle
 }) {
   const beforeWidth = weekStart * WEEK_COLUMN_WIDTH;
@@ -278,6 +282,18 @@ const SupplyPlanMetricRows = memo(function SupplyPlanMetricRows({
               style={stickyStyle(fixedColumns, index)}
             >
               <SupplyPlanActionBadge row={row} />
+            </td>
+          );
+        }
+        if (column.key === 'relatedDetails') {
+          return (
+            <td
+              key={column.key}
+              rowSpan={SUPPLY_PLAN_ROW_TYPES.length}
+              className="supply-plan-sticky supply-plan-related-details-column"
+              style={stickyStyle(fixedColumns, index)}
+            >
+              <SupplyPlanRelatedDetails details={row.relatedDetails} />
             </td>
           );
         }
@@ -306,11 +322,6 @@ const SupplyPlanMetricRows = memo(function SupplyPlanMetricRows({
           </td>
         );
       })}
-      {metricIndex === 0 && showRelatedDetails ? (
-        <td rowSpan={SUPPLY_PLAN_ROW_TYPES.length} className="supply-plan-related-details-column">
-          <SupplyPlanRelatedDetails details={row.relatedDetails} />
-        </td>
-      ) : null}
       <td className={`numeric-cell supply-plan-data-column${metric === '预测剩余库存' && metricDataValue(row, metric) < 0 ? ' inventory-negative' : ''}`}>
         {numberText(metricDataValue(row, metric))}
       </td>
@@ -685,12 +696,20 @@ export default function SupplyPlanBoard({ token, active }) {
     () => flattenedRows.some((item) => item.level === 'child' || item.expanded),
     [flattenedRows]
   );
-  const fixedColumns = showChildColumns ? EXPANDED_FIXED_COLUMNS : SUMMARY_FIXED_COLUMNS;
+  const fixedColumns = useMemo(() => {
+    const columns = showChildColumns ? EXPANDED_FIXED_COLUMNS : SUMMARY_FIXED_COLUMNS;
+    if (!showRelatedDetails) return columns;
+    const modelIndex = columns.findIndex((column) => column.key === 'model');
+    return [
+      ...columns.slice(0, modelIndex + 1),
+      RELATED_DETAILS_COLUMN,
+      ...columns.slice(modelIndex + 1)
+    ];
+  }, [showChildColumns, showRelatedDetails]);
   const fixedWidth = useMemo(() => (
     fixedColumns.reduce((sum, column) => sum + column.width, 0)
     + 82
-    + (showRelatedDetails ? RELATED_DETAILS_COLUMN_WIDTH : 0)
-  ), [fixedColumns, showRelatedDetails]);
+  ), [fixedColumns]);
   const visibleWeeks = useMemo(
     () => weeks.slice(visibleWeekRange.start, visibleWeekRange.end),
     [visibleWeekRange, weeks]
@@ -820,9 +839,8 @@ export default function SupplyPlanBoard({ token, active }) {
           <thead>
             <tr>
               {fixedColumns.map((column, index) => (
-                <th key={column.key} className={`supply-plan-sticky${CHILD_DETAIL_COLUMNS.some((detail) => detail.key === column.key) ? ' supply-plan-detail-column' : ''}`} style={stickyStyle(fixedColumns, index)}>{column.label}</th>
+                <th key={column.key} className={`supply-plan-sticky${CHILD_DETAIL_COLUMNS.some((detail) => detail.key === column.key) ? ' supply-plan-detail-column' : ''}${column.key === 'relatedDetails' ? ' supply-plan-related-details-column' : ''}`} style={stickyStyle(fixedColumns, index)}>{column.label}</th>
               ))}
-              {showRelatedDetails ? <th className="supply-plan-related-details-column">关联物料明细</th> : null}
               <th className="supply-plan-data-column">数据</th>
               {visibleWeekRange.start ? <th aria-hidden="true" className="supply-plan-week-spacer" style={{ width: visibleWeekRange.start * WEEK_COLUMN_WIDTH, minWidth: visibleWeekRange.start * WEEK_COLUMN_WIDTH }} /> : null}
               {visibleWeeks.map((week) => (
@@ -834,12 +852,12 @@ export default function SupplyPlanBoard({ token, active }) {
           <tbody>
             {virtualRows.beforeHeight ? (
               <tr className="supply-plan-virtual-spacer" aria-hidden="true">
-                <td colSpan={fixedColumns.length + visibleWeeks.length + 3 + (showRelatedDetails ? 1 : 0)} style={{ height: virtualRows.beforeHeight }} />
+                <td colSpan={fixedColumns.length + visibleWeeks.length + 3} style={{ height: virtualRows.beforeHeight }} />
               </tr>
             ) : null}
             {virtualRows.visible.map((item) => item.kind === 'status' ? (
               <tr key={item.key}>
-                <td className={`supply-plan-detail-status${item.error ? ' error' : ''}`} colSpan={fixedColumns.length + visibleWeeks.length + 3 + (showRelatedDetails ? 1 : 0)}>
+                <td className={`supply-plan-detail-status${item.error ? ' error' : ''}`} colSpan={fixedColumns.length + visibleWeeks.length + 3}>
                   {item.error || '正在读取该型号明细…'}
                 </td>
               </tr>
@@ -856,16 +874,15 @@ export default function SupplyPlanBoard({ token, active }) {
                 expanded={item.expanded}
                 childCount={item.childCount}
                 detailLoading={item.detailLoading}
-                showRelatedDetails={showRelatedDetails}
                 onToggle={toggleModel}
               />
             ))}
             {virtualRows.afterHeight ? (
               <tr className="supply-plan-virtual-spacer" aria-hidden="true">
-                <td colSpan={fixedColumns.length + visibleWeeks.length + 3 + (showRelatedDetails ? 1 : 0)} style={{ height: virtualRows.afterHeight }} />
+                <td colSpan={fixedColumns.length + visibleWeeks.length + 3} style={{ height: virtualRows.afterHeight }} />
               </tr>
             ) : null}
-            {!rows.length ? <tr><td className="empty-cell" colSpan={fixedColumns.length + 1 + visibleWeeks.length + (showRelatedDetails ? 1 : 0)}>暂无可展示的供应计划数据</td></tr> : null}
+            {!rows.length ? <tr><td className="empty-cell" colSpan={fixedColumns.length + 1 + visibleWeeks.length}>暂无可展示的供应计划数据</td></tr> : null}
           </tbody>
         </table>
       </div>
