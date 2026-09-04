@@ -8488,6 +8488,11 @@ th {
   white-space: normal;
 }
 
+.supply-plan-table tr.supply-plan-parent-row td.supply-plan-related-details-column,
+.supply-plan-table tr.supply-plan-child-row td.supply-plan-related-details-column {
+  background: #f5f5f5;
+}
+
 .supply-plan-table thead .supply-plan-related-details-column {
   background: #2874ba;
 }

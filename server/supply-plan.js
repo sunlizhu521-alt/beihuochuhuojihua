@@ -593,7 +593,8 @@ export function groupSupplyPlanModels(rows = [], weekCount = 0) {
       sku: '',
       skuName: '按型号汇总',
       childCount: 0,
-      weeklyForecast: Array.from({ length: weekCount }, () => 0)
+      weeklyForecast: Array.from({ length: weekCount }, () => 0),
+      relatedDetailsByMaterialCode: new Map()
     };
     MODEL_SUM_FIELDS.forEach((field) => {
       group[field] = numberValue(group[field]) + numberValue(row[field]);
@@ -602,16 +603,39 @@ export function groupSupplyPlanModels(rows = [], weekCount = 0) {
       value + numberValue(row.weeklyForecast?.[index])
     ));
     group.childCount += 1;
+    (row.relatedDetails || []).forEach((detail) => {
+      const materialCode = materialCodeValue(detail.materialCode || detail.relatedMaterialCode);
+      if (!materialCode) return;
+      const related = group.relatedDetailsByMaterialCode.get(materialCode) || {
+        materialCode,
+        relatedMaterialCode: materialCode,
+        sku: text(detail.sku),
+        onHandQty: 0,
+        inTransitQty: 0,
+        undeliveredQty: 0
+      };
+      related.onHandQty += numberValue(detail.onHandQty);
+      related.inTransitQty += numberValue(detail.inTransitQty);
+      related.undeliveredQty += numberValue(detail.undeliveredQty);
+      group.relatedDetailsByMaterialCode.set(materialCode, related);
+    });
     const action = aggregateSupplyPlanAction([group, row]);
     group.actionConclusion = action.conclusion;
     group.actionColor = action.color;
     groups.set(key, group);
   });
-  return [...groups.values()].sort((left, right) => (
-    left.productLine.localeCompare(right.productLine, 'zh-CN')
-    || left.productSeries.localeCompare(right.productSeries, 'zh-CN')
-    || left.model.localeCompare(right.model, 'zh-CN', { numeric: true })
-  ));
+  return [...groups.values()]
+    .map(({ relatedDetailsByMaterialCode, ...group }) => ({
+      ...group,
+      relatedDetails: [...relatedDetailsByMaterialCode.values()].sort((left, right) => (
+        left.materialCode.localeCompare(right.materialCode, 'zh-CN', { numeric: true })
+      ))
+    }))
+    .sort((left, right) => (
+      left.productLine.localeCompare(right.productLine, 'zh-CN')
+      || left.productSeries.localeCompare(right.productSeries, 'zh-CN')
+      || left.model.localeCompare(right.model, 'zh-CN', { numeric: true })
+    ));
 }
 
 export function paginateSupplyPlanData(payload, {

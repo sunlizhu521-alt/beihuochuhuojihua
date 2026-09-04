@@ -34,9 +34,9 @@ const SUMMARY_FIXED_COLUMNS = [
   { key: 'productLine', label: '产品线', width: 92 },
   { key: 'productSeries', label: '系列', width: 92 },
   { key: 'model', label: '型号', width: 142 },
+  { key: 'actionConclusion', label: '动作结论', width: 100 },
   { key: 'safetyStockQty', label: '安全库存数量', width: 112 },
-  { key: 'metric', label: '供应计划指标', width: 112 },
-  { key: 'actionConclusion', label: '动作结论', width: 100 }
+  { key: 'metric', label: '供应计划指标', width: 112 }
 ];
 const CHILD_DETAIL_COLUMNS = [
   { key: 'businessUnit', label: '事业部', width: 116 },
@@ -47,9 +47,9 @@ const CHILD_DETAIL_COLUMNS = [
   { key: 'productPositioning', label: '产品定位', width: 100 }
 ];
 const EXPANDED_FIXED_COLUMNS = [
-  ...SUMMARY_FIXED_COLUMNS.slice(0, 3),
+  ...SUMMARY_FIXED_COLUMNS.slice(0, 4),
   ...CHILD_DETAIL_COLUMNS,
-  ...SUMMARY_FIXED_COLUMNS.slice(3)
+  ...SUMMARY_FIXED_COLUMNS.slice(4)
 ];
 const EMPTY_FILTERS = Object.freeze({ businessUnit: '', productLine: '', productSeries: '', actionConclusion: '' });
 
@@ -200,7 +200,23 @@ const SupplyPlanMetricRows = memo(function SupplyPlanMetricRows({
       key={`${rowKey}-${metric}`}
       className={`${metricIndex === 0 ? 'supply-plan-group-start ' : ''}${level === 'parent' ? 'supply-plan-parent-row' : 'supply-plan-child-row'} metric-row-${metricIndex}`}
     >
-      {metricIndex === 0 ? fixedColumns.slice(0, -2).map((column, index) => {
+      {fixedColumns.map((column, index) => {
+        if (column.key === 'metric') {
+          return <td key={column.key} className="supply-plan-sticky metric-name" style={stickyStyle(fixedColumns, index)}>{metric}</td>;
+        }
+        if (metricIndex !== 0) return null;
+        if (column.key === 'actionConclusion') {
+          return (
+            <td
+              key={column.key}
+              rowSpan={SUPPLY_PLAN_ROW_TYPES.length}
+              className="supply-plan-sticky supply-plan-action-column supply-plan-action-rowspan"
+              style={stickyStyle(fixedColumns, index)}
+            >
+              <SupplyPlanActionBadge row={row} />
+            </td>
+          );
+        }
         let content = String(row[column.key] ?? '未匹配');
         if (column.key === 'safetyStockQty') content = numberText(row.safetyStockQty);
         if (level === 'parent' && column.key === 'businessUnit') content = '全量汇总';
@@ -225,20 +241,10 @@ const SupplyPlanMetricRows = memo(function SupplyPlanMetricRows({
             ) : content}
           </td>
         );
-      }) : null}
-      <td className="supply-plan-sticky metric-name" style={stickyStyle(fixedColumns, fixedColumns.length - 2)}>{metric}</td>
-      {metricIndex === 0 ? (
-        <td
-          rowSpan={SUPPLY_PLAN_ROW_TYPES.length}
-          className="supply-plan-sticky supply-plan-action-column supply-plan-action-rowspan"
-          style={stickyStyle(fixedColumns, fixedColumns.length - 1)}
-        >
-          <SupplyPlanActionBadge row={row} />
-        </td>
-      ) : null}
+      })}
       {metricIndex === 0 && showRelatedDetails ? (
         <td rowSpan={SUPPLY_PLAN_ROW_TYPES.length} className="supply-plan-related-details-column">
-          {level === 'child' ? <SupplyPlanRelatedDetails details={row.relatedDetails} /> : <span className="supply-plan-related-empty">—</span>}
+          <SupplyPlanRelatedDetails details={row.relatedDetails} />
         </td>
       ) : null}
       <td className={`numeric-cell supply-plan-data-column${metric === '预测剩余库存' && metricDataValue(row, metric) < 0 ? ' inventory-negative' : ''}`}>

@@ -247,6 +247,34 @@ test('父行动作结论按加急、调整、停采、正常的严重度汇总',
   assert.equal(groups[0].actionColor, '#f44336');
 });
 
+test('父行按关联物料编码跨事业部聚合关联明细且保留首个SKU', () => {
+  const base = { modelKey: '产品线\u001f系列\u001fM1', productLine: '产品线', productSeries: '系列', model: 'M1', weeklyForecast: [] };
+  const groups = groupSupplyPlanModels([
+    {
+      ...base,
+      businessUnit: '一部',
+      materialCode: '1',
+      relatedDetails: [
+        { materialCode: '1002', sku: 'SKU-FIRST', onHandQty: 1, inTransitQty: 2, undeliveredQty: 3 },
+        { materialCode: '1003', sku: 'SKU-SECOND', onHandQty: 4, inTransitQty: 5, undeliveredQty: 6 }
+      ]
+    },
+    {
+      ...base,
+      businessUnit: '二部',
+      materialCode: '2',
+      relatedDetails: [
+        { relatedMaterialCode: '1002.0', sku: 'SKU-LATER', onHandQty: 10, inTransitQty: 20, undeliveredQty: 30 }
+      ]
+    }
+  ]);
+
+  assert.deepEqual(groups[0].relatedDetails, [
+    { materialCode: '1002', relatedMaterialCode: '1002', sku: 'SKU-FIRST', onHandQty: 11, inTransitQty: 22, undeliveredQty: 33 },
+    { materialCode: '1003', relatedMaterialCode: '1003', sku: 'SKU-SECOND', onHandQty: 4, inTransitQty: 5, undeliveredQty: 6 }
+  ]);
+});
+
 test('动作筛选只保留符合结论的型号并生成联动筛选选项', () => {
   const rows = [
     { modelKey: 'A', productLine: '护理床', productSeries: '星云', businessUnit: '一部', actionConclusion: '加急补货', weeklyForecast: [] },
