@@ -616,10 +616,10 @@ export function groupSupplyPlanModels(rows = [], weekCount = 0) {
 
 export function paginateSupplyPlanData(payload, {
   page = 1,
-  pageSize = 100,
+  pageSize = 10,
   filters = {}
 } = {}) {
-  const normalizedPageSize = Math.min(100, Math.max(1, Math.trunc(numberValue(pageSize)) || 100));
+  const normalizedPageSize = Math.min(10, Math.max(1, Math.trunc(numberValue(pageSize)) || 10));
   const filteredRows = payload.rows.filter((row) => matchesFilters(row, filters));
   const models = groupSupplyPlanModels(filteredRows, payload.weeks.length);
   const totalItems = models.length;

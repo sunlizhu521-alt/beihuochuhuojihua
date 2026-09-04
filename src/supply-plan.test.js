@@ -8,6 +8,7 @@ import {
   filterSupplyPlanRows,
   groupSupplyPlanRows,
   parseSupplyPlanWorksheet,
+  SUPPLY_PLAN_PAGE_SIZE,
   SUPPLY_PLAN_ROW_TYPES,
   supplyPlanRowKey,
   supplyPlanVirtualWindow
@@ -127,6 +128,10 @@ test('供应计划固定使用六个指标', () => {
   assert.deepEqual(SUPPLY_PLAN_ROW_TYPES, [
     '销售预测', '未交付', '在途', '在库', '预测剩余库存', '建议采购'
   ]);
+});
+
+test('供应计划分页固定为每页10个父型号', () => {
+  assert.equal(SUPPLY_PLAN_PAGE_SIZE, 10);
 });
 
 test('供应计划竖向虚拟窗口只保留可视区及前后缓冲行', () => {

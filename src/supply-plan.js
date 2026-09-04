@@ -1,4 +1,4 @@
-export const SUPPLY_PLAN_PAGE_SIZE = 100;
+export const SUPPLY_PLAN_PAGE_SIZE = 10;
 export const SUPPLY_PLAN_ROW_TYPES = Object.freeze([
   '销售预测',
   '未交付',

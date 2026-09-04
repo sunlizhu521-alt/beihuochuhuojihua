@@ -8480,31 +8480,33 @@ th {
   background: #f8fafc;
 }
 
-.supply-plan-table tr.supply-plan-related-row td,
-.supply-plan-table tr.supply-plan-related-row .supply-plan-sticky,
-.supply-plan-table tr.supply-plan-related-row .supply-plan-data-column,
-.supply-plan-table tr.supply-plan-related-row .supply-plan-detail-column {
-  background: #f5f5f5;
-  color: #64748b;
+.supply-plan-table .supply-plan-related-details-column {
+  width: 360px;
+  min-width: 360px;
+  max-width: 360px;
+  vertical-align: middle;
+  white-space: normal;
 }
 
-.supply-plan-table tr.supply-plan-related-row.supply-plan-group-start td {
-  border-top: 1px dotted #b8c2cc;
+.supply-plan-table thead .supply-plan-related-details-column {
+  background: #2874ba;
 }
 
-.supply-plan-related-code {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
+.supply-plan-related-list {
+  display: grid;
+  gap: 4px;
+  color: #475569;
+  line-height: 1.35;
+  text-align: left;
 }
 
-.supply-plan-related-code small {
-  padding: 1px 4px;
-  border: 1px solid #cbd5e1;
-  border-radius: 3px;
-  color: #64748b;
-  font-size: .56rem;
-  line-height: 1.2;
+.supply-plan-related-list > div + div {
+  padding-top: 4px;
+  border-top: 1px dotted #cbd5e1;
+}
+
+.supply-plan-related-empty {
+  color: #94a3b8;
 }
 
 .supply-plan-model-toggle {

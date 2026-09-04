@@ -157,8 +157,8 @@ test('渠道按仓库站点归类', () => {
   assert.equal(supplyPlanChannel('中国').key, 'domestic');
 });
 
-test('服务端按型号分页且每页最多100个', () => {
-  const rows = Array.from({ length: 205 }, (_, index) => ({
+test('服务端先按父型号分组再分页且每页固定最多10个', () => {
+  const rows = Array.from({ length: 25 }, (_, index) => ({
     modelKey: `产品线\u001f系列\u001fM${index}`,
     productLine: '产品线',
     productSeries: '系列',
@@ -168,10 +168,12 @@ test('服务端按型号分页且每页最多100个', () => {
     weeklyForecast: [1, 2],
     inventoryRemainingQty: index
   }));
+  rows.push({ ...rows[0], businessUnit: '海外事业部', materialCode: 'duplicate-child' });
   const page = paginateSupplyPlanData({ ok: true, rows, weeks: [{}, {}] }, { page: 2, pageSize: 200 });
-  assert.equal(page.rows.length, 100);
+  assert.equal(page.rows.length, 10);
+  assert.equal(page.rows[0].model, 'M10');
   assert.deepEqual(page.pagination, {
-    page: 2, pageSize: 100, totalItems: 205, totalPages: 3, totalChildItems: 205
+    page: 2, pageSize: 10, totalItems: 25, totalPages: 3, totalChildItems: 26
   });
 });
 

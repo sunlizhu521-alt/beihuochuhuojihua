@@ -27,9 +27,9 @@ const WEEK_COLUMN_WIDTH = 72;
 const WEEK_OVERSCAN = 3;
 const FILTER_DEBOUNCE_MS = 300;
 const METRIC_BLOCK_HEIGHT = 174;
-const RELATED_METRIC_BLOCK_HEIGHT = 116;
 const STATUS_ROW_HEIGHT = 44;
 const VERTICAL_OVERSCAN_HEIGHT = METRIC_BLOCK_HEIGHT * 10;
+const RELATED_DETAILS_COLUMN_WIDTH = 360;
 const SUMMARY_FIXED_COLUMNS = [
   { key: 'productLine', label: '产品线', width: 92 },
   { key: 'productSeries', label: '系列', width: 92 },
@@ -52,7 +52,6 @@ const EXPANDED_FIXED_COLUMNS = [
   ...SUMMARY_FIXED_COLUMNS.slice(3)
 ];
 const EMPTY_FILTERS = Object.freeze({ businessUnit: '', productLine: '', productSeries: '', actionConclusion: '' });
-const RELATED_ROW_TYPES = SUPPLY_PLAN_ROW_TYPES.filter((metric) => !['预测剩余库存', '建议采购'].includes(metric));
 
 function filtersEqual(left, right) {
   return SUPPLY_PLAN_FILTER_FIELDS.every(({ key }) => left[key] === right[key]);
@@ -163,6 +162,23 @@ const SupplyPlanActionBadge = memo(function SupplyPlanActionBadge({ row }) {
   );
 });
 
+const SupplyPlanRelatedDetails = memo(function SupplyPlanRelatedDetails({ details = [] }) {
+  if (!details.length) return <span className="supply-plan-related-empty">—</span>;
+  return (
+    <div className="supply-plan-related-list">
+      {details.map((detail) => {
+        const code = String(detail.materialCode || '未匹配');
+        const sku = String(detail.sku || '未匹配');
+        return (
+          <div key={`${detail.businessUnit || ''}-${code}-${sku}`}>
+            {code}({sku}) 在库{numberText(detail.onHandQty)}/在途{numberText(detail.inTransitQty)}/未交付{numberText(detail.undeliveredQty)}
+          </div>
+        );
+      })}
+    </div>
+  );
+});
+
 const SupplyPlanMetricRows = memo(function SupplyPlanMetricRows({
   row,
   rowKey,
@@ -174,20 +190,19 @@ const SupplyPlanMetricRows = memo(function SupplyPlanMetricRows({
   expanded = false,
   childCount = 0,
   detailLoading = false,
+  showRelatedDetails = false,
   onToggle
 }) {
-  const metrics = level === 'related' ? RELATED_ROW_TYPES : SUPPLY_PLAN_ROW_TYPES;
   const beforeWidth = weekStart * WEEK_COLUMN_WIDTH;
   const afterWidth = Math.max(0, totalWeeks - weekStart - visibleWeeks.length) * WEEK_COLUMN_WIDTH;
-  return metrics.map((metric, metricIndex) => (
+  return SUPPLY_PLAN_ROW_TYPES.map((metric, metricIndex) => (
     <tr
       key={`${rowKey}-${metric}`}
-      className={`${metricIndex === 0 ? 'supply-plan-group-start ' : ''}${level === 'parent' ? 'supply-plan-parent-row' : level === 'related' ? 'supply-plan-related-row' : 'supply-plan-child-row'} metric-row-${metricIndex}`}
+      className={`${metricIndex === 0 ? 'supply-plan-group-start ' : ''}${level === 'parent' ? 'supply-plan-parent-row' : 'supply-plan-child-row'} metric-row-${metricIndex}`}
     >
       {metricIndex === 0 ? fixedColumns.slice(0, -2).map((column, index) => {
         let content = String(row[column.key] ?? '未匹配');
         if (column.key === 'safetyStockQty') content = numberText(row.safetyStockQty);
-        if (level === 'related' && column.key === 'safetyStockQty') content = '—';
         if (level === 'parent' && column.key === 'businessUnit') content = '全量汇总';
         if (level === 'parent' && column.key === 'materialCode') content = `${childCount} 项`;
         if (level === 'parent' && column.key === 'sku') content = '—';
@@ -196,7 +211,7 @@ const SupplyPlanMetricRows = memo(function SupplyPlanMetricRows({
         return (
           <td
             key={column.key}
-            rowSpan={metrics.length}
+            rowSpan={SUPPLY_PLAN_ROW_TYPES.length}
             className={`supply-plan-sticky supply-plan-rowspan${CHILD_DETAIL_COLUMNS.some((detail) => detail.key === column.key) ? ' supply-plan-detail-column' : ''}`}
             style={stickyStyle(fixedColumns, index)}
             title={String(content)}
@@ -207,8 +222,6 @@ const SupplyPlanMetricRows = memo(function SupplyPlanMetricRows({
                 <strong>{content}</strong>
                 <small>{detailLoading ? '读取中…' : `${childCount} 项`}</small>
               </button>
-            ) : level === 'related' && column.key === 'materialCode' ? (
-              <span className="supply-plan-related-code">{content}<small>关联</small></span>
             ) : content}
           </td>
         );
@@ -216,11 +229,16 @@ const SupplyPlanMetricRows = memo(function SupplyPlanMetricRows({
       <td className="supply-plan-sticky metric-name" style={stickyStyle(fixedColumns, fixedColumns.length - 2)}>{metric}</td>
       {metricIndex === 0 ? (
         <td
-          rowSpan={metrics.length}
+          rowSpan={SUPPLY_PLAN_ROW_TYPES.length}
           className="supply-plan-sticky supply-plan-action-column supply-plan-action-rowspan"
           style={stickyStyle(fixedColumns, fixedColumns.length - 1)}
         >
-          {level === 'related' ? null : <SupplyPlanActionBadge row={row} />}
+          <SupplyPlanActionBadge row={row} />
+        </td>
+      ) : null}
+      {metricIndex === 0 && showRelatedDetails ? (
+        <td rowSpan={SUPPLY_PLAN_ROW_TYPES.length} className="supply-plan-related-details-column">
+          {level === 'child' ? <SupplyPlanRelatedDetails details={row.relatedDetails} /> : <span className="supply-plan-related-empty">—</span>}
         </td>
       ) : null}
       <td className={`numeric-cell supply-plan-data-column${metric === '预测剩余库存' && metricDataValue(row, metric) < 0 ? ' inventory-negative' : ''}`}>
@@ -561,16 +579,6 @@ export default function SupplyPlanBoard({ token, active }) {
         detailLoading: false,
         height: METRIC_BLOCK_HEIGHT
       });
-      if (showRelatedDetails) (child.relatedDetails || []).forEach((related) => items.push({
-        key: `related-${group.modelKey}-${supplyPlanRowKey(child)}-${supplyPlanRowKey(related)}`,
-        kind: 'data',
-        row: related,
-        level: 'related',
-        expanded: false,
-        childCount: 0,
-        detailLoading: false,
-        height: RELATED_METRIC_BLOCK_HEIGHT
-      }));
     });
     if (detailState?.loading || detailState?.error) items.push({
       key: `status-${group.modelKey}`,
@@ -579,14 +587,18 @@ export default function SupplyPlanBoard({ token, active }) {
       height: STATUS_ROW_HEIGHT
     });
     return items;
-  }), [modelStates, rows, showRelatedDetails]);
+  }), [modelStates, rows]);
 
   const showChildColumns = useMemo(
     () => flattenedRows.some((item) => item.level === 'child' || item.expanded),
     [flattenedRows]
   );
   const fixedColumns = showChildColumns ? EXPANDED_FIXED_COLUMNS : SUMMARY_FIXED_COLUMNS;
-  const fixedWidth = useMemo(() => fixedColumns.reduce((sum, column) => sum + column.width, 0) + 82, [fixedColumns]);
+  const fixedWidth = useMemo(() => (
+    fixedColumns.reduce((sum, column) => sum + column.width, 0)
+    + 82
+    + (showRelatedDetails ? RELATED_DETAILS_COLUMN_WIDTH : 0)
+  ), [fixedColumns, showRelatedDetails]);
   const visibleWeeks = useMemo(
     () => weeks.slice(visibleWeekRange.start, visibleWeekRange.end),
     [visibleWeekRange, weeks]
@@ -697,6 +709,7 @@ export default function SupplyPlanBoard({ token, active }) {
               {fixedColumns.map((column, index) => (
                 <th key={column.key} className={`supply-plan-sticky${CHILD_DETAIL_COLUMNS.some((detail) => detail.key === column.key) ? ' supply-plan-detail-column' : ''}`} style={stickyStyle(fixedColumns, index)}>{column.label}</th>
               ))}
+              {showRelatedDetails ? <th className="supply-plan-related-details-column">关联物料明细</th> : null}
               <th className="supply-plan-data-column">数据</th>
               {visibleWeekRange.start ? <th aria-hidden="true" className="supply-plan-week-spacer" style={{ width: visibleWeekRange.start * WEEK_COLUMN_WIDTH, minWidth: visibleWeekRange.start * WEEK_COLUMN_WIDTH }} /> : null}
               {visibleWeeks.map((week) => (
@@ -708,12 +721,12 @@ export default function SupplyPlanBoard({ token, active }) {
           <tbody>
             {virtualRows.beforeHeight ? (
               <tr className="supply-plan-virtual-spacer" aria-hidden="true">
-                <td colSpan={fixedColumns.length + visibleWeeks.length + 3} style={{ height: virtualRows.beforeHeight }} />
+                <td colSpan={fixedColumns.length + visibleWeeks.length + 3 + (showRelatedDetails ? 1 : 0)} style={{ height: virtualRows.beforeHeight }} />
               </tr>
             ) : null}
             {virtualRows.visible.map((item) => item.kind === 'status' ? (
               <tr key={item.key}>
-                <td className={`supply-plan-detail-status${item.error ? ' error' : ''}`} colSpan={fixedColumns.length + visibleWeeks.length + 3}>
+                <td className={`supply-plan-detail-status${item.error ? ' error' : ''}`} colSpan={fixedColumns.length + visibleWeeks.length + 3 + (showRelatedDetails ? 1 : 0)}>
                   {item.error || '正在读取该型号明细…'}
                 </td>
               </tr>
@@ -730,15 +743,16 @@ export default function SupplyPlanBoard({ token, active }) {
                 expanded={item.expanded}
                 childCount={item.childCount}
                 detailLoading={item.detailLoading}
+                showRelatedDetails={showRelatedDetails}
                 onToggle={toggleModel}
               />
             ))}
             {virtualRows.afterHeight ? (
               <tr className="supply-plan-virtual-spacer" aria-hidden="true">
-                <td colSpan={fixedColumns.length + visibleWeeks.length + 3} style={{ height: virtualRows.afterHeight }} />
+                <td colSpan={fixedColumns.length + visibleWeeks.length + 3 + (showRelatedDetails ? 1 : 0)} style={{ height: virtualRows.afterHeight }} />
               </tr>
             ) : null}
-            {!rows.length ? <tr><td className="empty-cell" colSpan={fixedColumns.length + 1 + visibleWeeks.length}>暂无可展示的供应计划数据</td></tr> : null}
+            {!rows.length ? <tr><td className="empty-cell" colSpan={fixedColumns.length + 1 + visibleWeeks.length + (showRelatedDetails ? 1 : 0)}>暂无可展示的供应计划数据</td></tr> : null}
           </tbody>
         </table>
       </div>
