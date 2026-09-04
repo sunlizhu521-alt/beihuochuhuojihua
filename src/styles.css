@@ -5371,6 +5371,17 @@ th {
   line-height: 1.35;
 }
 
+.library-slot .mapping-grid label.mapping-field-missing > small.mapping-field-error {
+  min-height: 0;
+  color: #dc2626;
+  font-weight: 600;
+}
+
+.library-slot .mapping-grid label.mapping-field-missing select {
+  border-color: #ef4444;
+  background: #fff7f7;
+}
+
 .mapping-grid-note,
 .mapping-grid-summary,
 .mapping-confirmation {

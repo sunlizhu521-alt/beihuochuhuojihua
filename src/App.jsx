@@ -5,6 +5,7 @@ import { DIMENSION_SLOTS, INVENTORY_SUMMARY_LIBRARY_SLOTS } from '../shared/dime
 import { duplicateMappingColumns, validMappingForColumns } from '../shared/dimension-mapping.js';
 import { API } from './api-base.js';
 import { getLoadingProgress, installGlobalFetchProgress, subscribeLoadingProgress } from './loading-progress.js';
+import { loadSlotMapping, matchRememberedSlotMapping, saveSlotMapping } from './slot-mapping-memory.js';
 
 const InventoryCalculationGuide = React.lazy(() => import('./InventoryCalculationGuide.jsx'));
 const SupplyPlanBoard = React.lazy(() => import('./SupplyPlanBoard.jsx'));
@@ -2795,20 +2796,21 @@ function MonthCalendarFilter({ label, value = [], options = [], onChange, multip
   );
 }
 
-function FieldMapping({ fields, columns, mapping, onChange, requiredFields = [], manual = false, note = '', confirmed = false, onConfirm = () => {} }) {
+function FieldMapping({ fields, columns, mapping, missingRememberedColumns = {}, onChange, requiredFields = [], manual = false, note = '', confirmed = false, onConfirm = () => {} }) {
   const required = new Set(requiredFields);
   const usedColumns = new Set(Object.values(mapping || {}).filter(Boolean));
   const mappedCount = fields.filter(([key]) => mapping[key]).length;
   const requiredMappedCount = requiredFields.filter((key) => mapping[key]).length;
   return (
     <div className="mapping-grid">
-      {manual && <p className="mapping-grid-note">请逐项手动选择源字段，系统不会自动预选。{note ? ` ${note}` : ' 其他未选择字段按空值保存。'}</p>}
+      {manual && <p className="mapping-grid-note">首次上传请逐项手动选择；已确认的映射会按源列名自动回填。{note ? ` ${note}` : ' 其他未选择字段按空值保存。'}</p>}
       <p className="mapping-grid-summary">已映射 {mappedCount}/{fields.length}{requiredFields.length ? `，必选 ${requiredMappedCount}/${requiredFields.length}` : ''}</p>
       {fields.map(([key, label, description]) => (
-        <label key={key}>
+        <label key={key} className={missingRememberedColumns[key] ? 'mapping-field-missing' : ''}>
           <span>{label}{required.has(key) ? '（必选）' : ''}</span>
           {description && <small>{description}</small>}
-          <select value={mapping[key] || ''} onChange={(event) => onChange({ ...mapping, [key]: event.target.value })}>
+          {missingRememberedColumns[key] && <small className="mapping-field-error" role="alert">原映射列"{missingRememberedColumns[key]}"未找到，请重新选择</small>}
+          <select value={mapping[key] || ''} onChange={(event) => onChange({ ...mapping, [key]: event.target.value }, key)}>
             <option value="">请选择字段</option>
             {columns.map((column) => <option key={column} value={column} disabled={usedColumns.has(column) && mapping[key] !== column}>{column}{usedColumns.has(column) && mapping[key] !== column ? '（已用）' : ''}</option>)}
           </select>
@@ -3003,6 +3005,8 @@ function DimensionLibrary({ token, reloadDemands, reloadDemandData = true, setMe
       const payload = await request('/api/workbook/inspect', { token, method: 'POST', body: data });
       const record = records.find((item) => item.slot_id === slot.id);
       const columns = payload.columns || [];
+      const rememberedSlotMapping = slot.fields?.length ? loadSlotMapping(slot.id) : null;
+      const rememberedMatch = matchRememberedSlotMapping(rememberedSlotMapping?.mapping, columns, slot.fields || []);
       const inspectRowCount = payload.rowCount == null ? null : Number(payload.rowCount || 0);
       const productProjectSummary = payload.parseSummary?.parserType === 'productProject' ? payload.parseSummary : null;
       const requiresSheetSelection = Boolean(slot.requiresSheetSelection && (payload.sheetNames?.length || 0) > 1);
@@ -3010,20 +3014,26 @@ function DimensionLibrary({ token, reloadDemands, reloadDemandData = true, setMe
       setLocal((prev) => {
         const prevState = prev[slot.id] || {};
         const savedMappingCandidate = [
+          rememberedSlotMapping?.mapping,
           prevState.mapping,
           prevState.savedMapping,
           mappingPresetsRef.current[slot.id],
           record?.mapping
         ].find((candidate) => hasMappedInventoryFields(candidate, slot.fields || [])) || {};
-        const savedMapping = slot.reuseSavedMapping === false ? {} : savedMappingCandidate;
+        const hasRememberedMapping = hasMappedInventoryFields(rememberedSlotMapping?.mapping, slot.fields || []);
+        const savedMapping = hasRememberedMapping
+          ? rememberedSlotMapping.mapping
+          : slot.reuseSavedMapping === false ? {} : savedMappingCandidate;
         const hasSavedMapping = hasMappedInventoryFields(savedMapping, slot.fields || []);
         const sheetMappings = slot.reuseSavedMapping === false ? {} : { ...(prevState.sheetMappings || {}) };
-        const mapping = validMappingForColumns(
-          sheetMappings[''] || savedMapping,
-          columns,
-          slot.fields,
-          Boolean(slot.autoMap) || (!slot.manualFieldSelection && !hasSavedMapping)
-        );
+        const mapping = hasRememberedMapping
+          ? validMappingForColumns(rememberedMatch.mapping, columns, slot.fields, false)
+          : validMappingForColumns(
+            sheetMappings[''] || savedMapping,
+            columns,
+            slot.fields,
+            Boolean(slot.autoMap) || (!slot.manualFieldSelection && !hasSavedMapping)
+          );
         if (slot.reuseSavedMapping !== false && record?.sheetName) {
           const recordSheet = (payload.sheetPreviews || []).find((item) => item.sheetName === record.sheetName);
           sheetMappings[record.sheetName] = validMappingForColumns(
@@ -3044,6 +3054,9 @@ function DimensionLibrary({ token, reloadDemands, reloadDemandData = true, setMe
             sheetPreviews: payload.sheetPreviews || [],
             savedMapping,
             sheetMappings: { ...sheetMappings, '': mapping },
+            rememberedMapping: rememberedSlotMapping?.mapping || {},
+            missingRememberedColumns: hasRememberedMapping ? rememberedMatch.missingColumns : {},
+            sheetMissingRememberedColumns: { '': hasRememberedMapping ? rememberedMatch.missingColumns : {} },
             mapping,
             mappingConfirmed: false,
             sheetName: '',
@@ -3096,17 +3109,33 @@ function DimensionLibrary({ token, reloadDemands, reloadDemandData = true, setMe
     const currentKey = state.sheetName || '';
     const nextKey = sheetName || '';
     const sheetMappings = { ...(state.sheetMappings || {}), [currentKey]: state.mapping || {} };
-    const savedMapping = [
-      sheetMappings[nextKey],
-      ...(slot.reuseSavedMapping === false ? [] : [state.mapping, state.savedMapping, mappingPresetsRef.current[slot.id]])
-    ].find((candidate) => hasMappedInventoryFields(candidate, slot.fields || [])) || {};
+    const hasSheetMapping = Object.prototype.hasOwnProperty.call(sheetMappings, nextKey);
+    const rememberedSlotMapping = hasMappedInventoryFields(state.rememberedMapping, slot.fields || [])
+      ? { mapping: state.rememberedMapping }
+      : loadSlotMapping(slot.id);
+    const rememberedMatch = matchRememberedSlotMapping(rememberedSlotMapping?.mapping, nextColumns, slot.fields || []);
+    const savedMapping = hasSheetMapping
+      ? sheetMappings[nextKey]
+      : [
+        rememberedSlotMapping?.mapping,
+        ...(slot.reuseSavedMapping === false ? [] : [state.mapping, state.savedMapping, mappingPresetsRef.current[slot.id]])
+      ].find((candidate) => hasMappedInventoryFields(candidate, slot.fields || [])) || {};
     const hasSavedMapping = hasMappedInventoryFields(savedMapping, slot.fields || []);
-    const mapping = validMappingForColumns(
-      savedMapping,
-      nextColumns,
-      slot.fields,
-      Boolean(slot.autoMap) || (!slot.manualFieldSelection && !hasSavedMapping)
-    );
+    const mapping = !hasSheetMapping && rememberedSlotMapping
+      ? validMappingForColumns(rememberedMatch.mapping, nextColumns, slot.fields, false)
+      : validMappingForColumns(
+        savedMapping,
+        nextColumns,
+        slot.fields,
+        Boolean(slot.autoMap) || (!slot.manualFieldSelection && !hasSavedMapping)
+      );
+    const sheetMissingRememberedColumns = {
+      ...(state.sheetMissingRememberedColumns || {}),
+      [currentKey]: state.missingRememberedColumns || {}
+    };
+    const missingRememberedColumns = hasSheetMapping
+      ? sheetMissingRememberedColumns[nextKey] || {}
+      : rememberedSlotMapping ? rememberedMatch.missingColumns : {};
     const inspectRowCount = sheetName
       ? (sheet?.rowCount == null ? null : Number(sheet.rowCount || 0))
       : (state.sheetPreviews || []).every((item) => item.rowCount != null)
@@ -3118,6 +3147,9 @@ function DimensionLibrary({ token, reloadDemands, reloadDemandData = true, setMe
       columns: nextColumns,
       sheetMappings,
       mapping,
+      rememberedMapping: rememberedSlotMapping?.mapping || {},
+      missingRememberedColumns,
+      sheetMissingRememberedColumns: { ...sheetMissingRememberedColumns, [nextKey]: missingRememberedColumns },
       mappingConfirmed: false,
       inspectRowCount,
       progress: 100,
@@ -3480,23 +3512,44 @@ function DimensionLibrary({ token, reloadDemands, reloadDemandData = true, setMe
                   fields={slot.fields}
                   columns={state.columns}
                   mapping={state.mapping || {}}
+                  missingRememberedColumns={state.missingRememberedColumns || {}}
                   requiredFields={slot.manualFieldSelection ? (slot.requiredFields || []) : []}
                   manual={Boolean(slot.manualFieldSelection)}
                   note={slot.mappingNote || ''}
                   confirmed={Boolean(state.mappingConfirmed)}
-                  onConfirm={(mappingConfirmed) => setSlotState(slot.id, { mappingConfirmed })}
-                  onChange={(mapping) => {
+                  onConfirm={(mappingConfirmed) => {
+                    if (!mappingConfirmed) {
+                      setSlotState(slot.id, { mappingConfirmed: false });
+                      return;
+                    }
+                    const remembered = saveSlotMapping(slot.id, state.mapping || {});
+                    const sheetKey = state.sheetName || '';
+                    setSlotState(slot.id, {
+                      mappingConfirmed: true,
+                      rememberedMapping: remembered?.mapping || state.mapping || {},
+                      missingRememberedColumns: {},
+                      sheetMissingRememberedColumns: { ...(state.sheetMissingRememberedColumns || {}), [sheetKey]: {} }
+                    });
+                  }}
+                  onChange={(mapping, changedKey) => {
                     const nextMapping = validMappingForColumns(mapping, state.columns, slot.fields, false);
                     const sheetKey = state.sheetName || '';
                     setLocal((prev) => ({
                       ...prev,
-                      [slot.id]: {
-                        ...(prev[slot.id] || {}),
-                        mapping: nextMapping,
-                        mappingConfirmed: false,
-                        savedMapping: nextMapping,
-                        sheetMappings: { ...(prev[slot.id]?.sheetMappings || {}), [sheetKey]: nextMapping }
-                      }
+                      [slot.id]: (() => {
+                        const current = prev[slot.id] || {};
+                        const missingRememberedColumns = { ...(current.missingRememberedColumns || {}) };
+                        if (nextMapping[changedKey]) delete missingRememberedColumns[changedKey];
+                        return {
+                          ...current,
+                          mapping: nextMapping,
+                          mappingConfirmed: false,
+                          savedMapping: nextMapping,
+                          missingRememberedColumns,
+                          sheetMappings: { ...(current.sheetMappings || {}), [sheetKey]: nextMapping },
+                          sheetMissingRememberedColumns: { ...(current.sheetMissingRememberedColumns || {}), [sheetKey]: missingRememberedColumns }
+                        };
+                      })()
                     }));
                     persistInventoryMapping(slot, nextMapping);
                   }}
