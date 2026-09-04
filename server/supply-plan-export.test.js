@@ -103,6 +103,15 @@ test('采购执行清单仅保留建议采购大于零的行并按指定字段�
   ]);
 });
 
+test('采购执行导出排除关联物料明细', () => {
+  const data = buildSupplyPlanPurchaseExportData({ supplyPlanData: { rows: [
+    { productLine: '护理床', productSeries: '星云', model: 'A1', materialCode: '1001', purchaseGap: 10 },
+    { isRelatedDetail: true, productLine: '护理床', productSeries: '星云', model: 'A1', materialCode: '1002', purchaseGap: 99 }
+  ] } });
+  assert.equal(data.rows.length, 1);
+  assert.equal(data.rows[0][3], '1001');
+});
+
 test('采购执行Excel符合宋体11、浅蓝表头、居中边框、筛选和冻结要求', async () => {
   const data = buildSupplyPlanPurchaseExportData({ supplyPlanData: payload });
   const buffer = await generateSupplyPlanPurchaseExcel(data);

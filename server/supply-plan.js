@@ -57,6 +57,59 @@ function sourceRows(source, slotId) {
   return Array.isArray(value?.rows) ? value.rows : [];
 }
 
+function materialCodeList(value) {
+  return [...new Set(text(value).split(/[\n,，、;；]+/).map(materialCodeValue).filter(Boolean))];
+}
+
+export function buildProductIterationMap(rows = []) {
+  const modelGroups = new Map();
+  rows.forEach((row) => {
+    const model = text(row?.model);
+    const rowLatestCode = materialCodeValue(row?.latestMaterialCode);
+    if (!model || !rowLatestCode) return;
+    const group = modelGroups.get(model) || {
+      model,
+      latestMaterialCode: rowLatestCode,
+      codes: new Set(),
+      productLine: text(row?.productLine),
+      productSeries: text(row?.productSeries),
+      latestSku: text(row?.latestSku),
+      latestMaterialName: text(row?.latestMaterialName)
+    };
+    group.codes.add(rowLatestCode);
+    materialCodeList(row?.relatedMaterialCode).forEach((code) => group.codes.add(code));
+    modelGroups.set(model, group);
+  });
+
+  const iterationMap = new Map();
+  modelGroups.forEach((group) => {
+    group.codes.forEach((materialCode) => {
+      if (iterationMap.has(materialCode)) return;
+      iterationMap.set(materialCode, {
+        model: group.model,
+        latestMaterialCode: group.latestMaterialCode,
+        isLatest: materialCode === group.latestMaterialCode,
+        productLine: group.productLine,
+        productSeries: group.productSeries,
+        latestSku: group.latestSku,
+        latestMaterialName: group.latestMaterialName
+      });
+    });
+  });
+  return iterationMap;
+}
+
+function iterationEntry(iterationMap, materialCode) {
+  const code = materialCodeValue(materialCode);
+  if (!code || !iterationMap) return null;
+  return iterationMap instanceof Map ? iterationMap.get(code) || null : iterationMap[code] || null;
+}
+
+function canonicalMaterialCode(iterationMap, materialCode) {
+  const code = materialCodeValue(materialCode);
+  return materialCodeValue(iterationEntry(iterationMap, code)?.latestMaterialCode) || code;
+}
+
 function integerAllocations(total, dayCounts) {
   const roundedTotal = Math.max(0, Math.round(numberValue(total)));
   if (!roundedTotal || !dayCounts.length) return dayCounts.map(() => 0);
@@ -244,6 +297,7 @@ function withSupplyPlanCalculations(row) {
 export function buildSupplyPlanData({
   inventorySummaryData = {},
   dimensionData = {},
+  iterationMap = new Map(),
   supplyPlanSettings = {},
   months = 6,
   now = new Date()
@@ -299,6 +353,36 @@ export function buildSupplyPlanData({
     item.skuName ||= text(row.skuName || row.materialName);
   });
 
+  const canonicalGroups = new Map();
+  grouped.forEach((item) => {
+    const mapping = iterationEntry(iterationMap, item.materialCode);
+    const latestMaterialCode = canonicalMaterialCode(iterationMap, item.materialCode);
+    const key = businessUnitMaterialKey(item.businessUnit, latestMaterialCode);
+    const current = canonicalGroups.get(key) || {
+      businessUnit: item.businessUnit,
+      materialCode: latestMaterialCode,
+      warehouses: new Set(),
+      onHandQty: 0,
+      inTransitQty: 0,
+      undeliveredQty: 0,
+      operator: '',
+      sku: '',
+      skuName: '',
+      sourceMaterialCodes: new Set(),
+      relatedItems: []
+    };
+    item.warehouses.forEach((warehouse) => current.warehouses.add(warehouse));
+    current.onHandQty += numberValue(item.onHandQty);
+    current.inTransitQty += numberValue(item.inTransitQty);
+    current.undeliveredQty += numberValue(item.undeliveredQty);
+    current.operator ||= item.operator;
+    current.sku ||= item.sku;
+    current.skuName ||= item.skuName;
+    current.sourceMaterialCodes.add(item.materialCode);
+    if (mapping && !mapping.isLatest) current.relatedItems.push(item);
+    canonicalGroups.set(key, current);
+  });
+
   const productMap = new Map((dimensionData.productCategory || [])
     .map((row) => [materialCodeValue(row.materialCode), row])
     .filter(([key]) => key));
@@ -310,17 +394,23 @@ export function buildSupplyPlanData({
     .filter(([key]) => key));
 
   const weeklyByItem = new Map();
+  const weeklyByOriginalItem = new Map();
   splitForecastToWeeks(forecastRows, now).forEach((row) => {
     if (!weekKeys.has(row.weekKey)) return;
-    const key = businessUnitMaterialKey(row.businessUnit, row.materialCode);
+    const originalKey = businessUnitMaterialKey(row.businessUnit, row.materialCode);
+    const original = weeklyByOriginalItem.get(originalKey) || new Map();
+    original.set(row.weekKey, (original.get(row.weekKey) || 0) + numberValue(row.forecastQty));
+    weeklyByOriginalItem.set(originalKey, original);
+    const key = businessUnitMaterialKey(row.businessUnit, canonicalMaterialCode(iterationMap, row.materialCode));
     const current = weeklyByItem.get(key) || new Map();
     current.set(row.weekKey, (current.get(row.weekKey) || 0) + numberValue(row.forecastQty));
     weeklyByItem.set(key, current);
   });
   const forecastDailyByItem = new Map();
+  const forecastDailyByOriginalItem = new Map();
   forecastRows.forEach((row) => {
-    const key = businessUnitMaterialKey(row.businessUnit, row.materialCode);
-    if (!grouped.has(key)) return;
+    const originalKey = businessUnitMaterialKey(row.businessUnit, row.materialCode);
+    if (!grouped.has(originalKey)) return;
     let total = 0;
     let days = 0;
     for (let index = 1; index <= 6; index += 1) {
@@ -328,15 +418,23 @@ export function buildSupplyPlanData({
       total += forecastValue(row, index);
       days += new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + 1, 0)).getUTCDate();
     }
+    const original = forecastDailyByOriginalItem.get(originalKey) || { total: 0, days: 0 };
+    original.total += total;
+    original.days = Math.max(original.days, days);
+    forecastDailyByOriginalItem.set(originalKey, original);
+    const key = businessUnitMaterialKey(row.businessUnit, canonicalMaterialCode(iterationMap, row.materialCode));
     const current = forecastDailyByItem.get(key) || { total: 0, days: 0 };
     current.total += total;
     current.days = Math.max(current.days, days);
     forecastDailyByItem.set(key, current);
   });
 
-  const rows = [...grouped.entries()].map(([key, item]) => {
+  const rows = [...canonicalGroups.entries()].map(([key, item]) => {
     const product = productMap.get(item.materialCode) || {};
-    const feedback = feedbackMap.get(key) || {};
+    const mapping = iterationEntry(iterationMap, item.materialCode) || {};
+    const feedback = feedbackMap.get(key) || [...item.sourceMaterialCodes]
+      .map((materialCode) => feedbackMap.get(businessUnitMaterialKey(item.businessUnit, materialCode)))
+      .find(Boolean) || {};
     const warehouses = [...item.warehouses];
     const warehouse = warehouseMap.get(warehouses[0]) || {};
     const warehouseSite = text(warehouse.marketplace || warehouse.salesChannel);
@@ -345,16 +443,62 @@ export function buildSupplyPlanData({
     const forecastDaily = forecastDailyByItem.get(key) || { total: 0, days: 0 };
     const weekly = weeklyByItem.get(key) || new Map();
     const weeklyForecast = weeks.map((week) => numberValue(weekly.get(week.key)));
-    const productLine = text(product.productLine) || '未匹配产品线';
-    const productSeries = text(product.productSeries) || '未匹配系列';
-    const model = text(product.model);
+    const productLine = text(product.productLine || mapping.productLine) || '未匹配产品线';
+    const productSeries = text(product.productSeries || mapping.productSeries) || '未匹配系列';
+    const model = text(product.model || mapping.model);
     const modelKey = modelKeyValue(productLine, productSeries, model, item.sku || item.materialCode);
+    const relatedDetails = item.relatedItems.map((relatedItem) => {
+      const relatedKey = businessUnitMaterialKey(relatedItem.businessUnit, relatedItem.materialCode);
+      const relatedProduct = productMap.get(relatedItem.materialCode) || {};
+      const relatedMapping = iterationEntry(iterationMap, relatedItem.materialCode) || {};
+      const relatedFeedback = feedbackMap.get(relatedKey) || {};
+      const relatedWarehouses = [...relatedItem.warehouses];
+      const relatedWarehouse = warehouseMap.get(relatedWarehouses[0]) || {};
+      const relatedWarehouseSite = text(relatedWarehouse.marketplace || relatedWarehouse.salesChannel);
+      const relatedChannel = supplyPlanChannel([relatedWarehouseSite, ...relatedWarehouses].filter(Boolean).join(' '));
+      const relatedWeekly = weeklyByOriginalItem.get(relatedKey) || new Map();
+      const relatedWeeklyForecast = weeks.map((week) => numberValue(relatedWeekly.get(week.key)));
+      const relatedDaily = forecastDailyByOriginalItem.get(relatedKey) || { total: 0, days: 0 };
+      return {
+        isRelatedDetail: true,
+        relationLabel: '关联',
+        latestMaterialCode: item.materialCode,
+        businessUnit: relatedItem.businessUnit,
+        materialCode: relatedItem.materialCode,
+        sku: relatedItem.sku || text(relatedProduct.sku),
+        skuName: relatedItem.skuName || text(relatedProduct.materialName),
+        materialName: relatedItem.skuName || text(relatedProduct.materialName),
+        productLine: text(relatedProduct.productLine || relatedMapping.productLine) || productLine,
+        productSeries: text(relatedProduct.productSeries || relatedMapping.productSeries) || productSeries,
+        model: text(relatedProduct.model || relatedMapping.model) || model || '未匹配型号',
+        modelKey,
+        productLifecycle: text(relatedFeedback.productLifecycle || relatedFeedback.unifiedStage),
+        productPositioning: text(relatedFeedback.productPositioning || relatedFeedback.unifiedPositioning),
+        warehouseCategory: text(relatedWarehouse.level1WarehouseCategory),
+        warehouseSite: relatedWarehouseSite,
+        warehouses: relatedWarehouses,
+        channelKey: relatedChannel.key,
+        channel: relatedChannel.label,
+        onHandQty: relatedItem.onHandQty,
+        inTransitQty: relatedItem.inTransitQty,
+        undeliveredQty: relatedItem.undeliveredQty,
+        operator: relatedItem.operator,
+        forecastDailyQty: relatedDaily.days ? relatedDaily.total / relatedDaily.days : 0,
+        forecastTotal: relatedWeeklyForecast.reduce((sum, value) => sum + value, 0),
+        inventoryRemainingQty: numberValue(relatedItem.inTransitQty) + numberValue(relatedItem.onHandQty) - numberValue(relatedWeeklyForecast[0]),
+        weekForecasts: weeks.map((week, index) => ({ ...week, forecastQty: relatedWeeklyForecast[index] })),
+        weeklyForecast: relatedWeeklyForecast,
+        purchaseGap: 0,
+        actionConclusion: '',
+        actionColor: ''
+      };
+    }).sort((left, right) => left.materialCode.localeCompare(right.materialCode, 'zh-CN', { numeric: true }));
     return withSupplyPlanCalculations({
       businessUnit: item.businessUnit,
       materialCode: item.materialCode,
-      sku: item.sku || text(product.sku),
-      skuName: item.skuName || text(product.materialName),
-      materialName: item.skuName || text(product.materialName),
+      sku: text(product.sku || mapping.latestSku) || item.sku,
+      skuName: text(product.materialName || mapping.latestMaterialName) || item.skuName,
+      materialName: text(product.materialName || mapping.latestMaterialName) || item.skuName,
       productLine,
       productSeries,
       model: model || '未匹配型号',
@@ -373,6 +517,8 @@ export function buildSupplyPlanData({
       inTransitQty: item.inTransitQty,
       undeliveredQty: item.undeliveredQty,
       operator: item.operator,
+      isLatestMaterial: Boolean(iterationEntry(iterationMap, item.materialCode)),
+      relatedDetails,
       safetyDays: numberValue(channelSettings.safetyDays ?? channelSettings.fullChainDays),
       totalLeadTimeDays: numberValue(channelSettings.fullChainDays),
       forecastDailyQty: forecastDaily.days ? forecastDaily.total / forecastDaily.days : 0,
@@ -396,7 +542,9 @@ export function buildSupplyPlanData({
     sourceSummary: {
       inventoryRows: inventoryRows.length,
       undeliveredRows: undeliveredRows.length,
-      forecastRows: forecastRows.length
+      forecastRows: forecastRows.length,
+      iterationMappings: iterationMap instanceof Map ? iterationMap.size : Object.keys(iterationMap || {}).length,
+      mergedRelatedMaterials: rows.reduce((sum, row) => sum + row.relatedDetails.length, 0)
     }
   };
 }

@@ -30,7 +30,7 @@ import {
   normalizeSupplyPlanParams
 } from './inventory-risk.js';
 import { buildInventoryRiskWorkbook } from './inventory-risk-export.js';
-import { buildSupplyPlanData, paginateSupplyPlanData, prepareSupplyPlanBeihuoPush, supplyPlanModelDetail } from './supply-plan.js';
+import { buildProductIterationMap, buildSupplyPlanData, paginateSupplyPlanData, prepareSupplyPlanBeihuoPush, supplyPlanModelDetail } from './supply-plan.js';
 import {
   buildSupplyPlanExportData,
   buildSupplyPlanPurchaseExportData,
@@ -1621,6 +1621,7 @@ function supplyPlanDataset(months) {
   const payload = buildSupplyPlanData({
     inventorySummaryData: supplyPlanSourceData(),
     dimensionData: supplyPlanDimensionData(),
+    iterationMap: buildProductIterationMap(getDimensionRows('warehouseMaterialMap')),
     supplyPlanSettings: settings.params,
     months
   });

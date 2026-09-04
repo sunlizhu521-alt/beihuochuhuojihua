@@ -140,7 +140,8 @@ export function buildSupplyPlanExportData({
   now = new Date()
 } = {}) {
   const weeks = Array.isArray(supplyPlanData.weeks) ? supplyPlanData.weeks : [];
-  const rows = (Array.isArray(supplyPlanData.rows) ? supplyPlanData.rows : []).filter((row) => matchesFilters(row, filters));
+  const rows = (Array.isArray(supplyPlanData.rows) ? supplyPlanData.rows : [])
+    .filter((row) => !row.isRelatedDetail && matchesFilters(row, filters));
   const assignments = assignmentMap(assignmentRows);
   const detailRows = [];
   const purchaseRows = [];
@@ -187,7 +188,7 @@ export function buildSupplyPlanExportData({
 
 export function buildSupplyPlanPurchaseExportData({ supplyPlanData = {}, filters = {} } = {}) {
   const rows = (Array.isArray(supplyPlanData.rows) ? supplyPlanData.rows : [])
-    .filter((row) => matchesFilters(row, filters) && numberValue(row.purchaseGap) > 0)
+    .filter((row) => !row.isRelatedDetail && matchesFilters(row, filters) && numberValue(row.purchaseGap) > 0)
     .map((row) => [
       row.productLine,
       row.productSeries,

@@ -27,6 +27,7 @@ const WEEK_COLUMN_WIDTH = 72;
 const WEEK_OVERSCAN = 3;
 const FILTER_DEBOUNCE_MS = 300;
 const METRIC_BLOCK_HEIGHT = 174;
+const RELATED_METRIC_BLOCK_HEIGHT = 116;
 const STATUS_ROW_HEIGHT = 44;
 const VERTICAL_OVERSCAN_HEIGHT = METRIC_BLOCK_HEIGHT * 10;
 const SUMMARY_FIXED_COLUMNS = [
@@ -51,6 +52,7 @@ const EXPANDED_FIXED_COLUMNS = [
   ...SUMMARY_FIXED_COLUMNS.slice(3)
 ];
 const EMPTY_FILTERS = Object.freeze({ businessUnit: '', productLine: '', productSeries: '', actionConclusion: '' });
+const RELATED_ROW_TYPES = SUPPLY_PLAN_ROW_TYPES.filter((metric) => !['预测剩余库存', '建议采购'].includes(metric));
 
 function filtersEqual(left, right) {
   return SUPPLY_PLAN_FILTER_FIELDS.every(({ key }) => left[key] === right[key]);
@@ -174,16 +176,18 @@ const SupplyPlanMetricRows = memo(function SupplyPlanMetricRows({
   detailLoading = false,
   onToggle
 }) {
+  const metrics = level === 'related' ? RELATED_ROW_TYPES : SUPPLY_PLAN_ROW_TYPES;
   const beforeWidth = weekStart * WEEK_COLUMN_WIDTH;
   const afterWidth = Math.max(0, totalWeeks - weekStart - visibleWeeks.length) * WEEK_COLUMN_WIDTH;
-  return SUPPLY_PLAN_ROW_TYPES.map((metric, metricIndex) => (
+  return metrics.map((metric, metricIndex) => (
     <tr
       key={`${rowKey}-${metric}`}
-      className={`${metricIndex === 0 ? 'supply-plan-group-start ' : ''}${level === 'parent' ? 'supply-plan-parent-row' : 'supply-plan-child-row'} metric-row-${metricIndex}`}
+      className={`${metricIndex === 0 ? 'supply-plan-group-start ' : ''}${level === 'parent' ? 'supply-plan-parent-row' : level === 'related' ? 'supply-plan-related-row' : 'supply-plan-child-row'} metric-row-${metricIndex}`}
     >
       {metricIndex === 0 ? fixedColumns.slice(0, -2).map((column, index) => {
         let content = String(row[column.key] ?? '未匹配');
         if (column.key === 'safetyStockQty') content = numberText(row.safetyStockQty);
+        if (level === 'related' && column.key === 'safetyStockQty') content = '—';
         if (level === 'parent' && column.key === 'businessUnit') content = '全量汇总';
         if (level === 'parent' && column.key === 'materialCode') content = `${childCount} 项`;
         if (level === 'parent' && column.key === 'sku') content = '—';
@@ -192,7 +196,7 @@ const SupplyPlanMetricRows = memo(function SupplyPlanMetricRows({
         return (
           <td
             key={column.key}
-            rowSpan={SUPPLY_PLAN_ROW_TYPES.length}
+            rowSpan={metrics.length}
             className={`supply-plan-sticky supply-plan-rowspan${CHILD_DETAIL_COLUMNS.some((detail) => detail.key === column.key) ? ' supply-plan-detail-column' : ''}`}
             style={stickyStyle(fixedColumns, index)}
             title={String(content)}
@@ -203,6 +207,8 @@ const SupplyPlanMetricRows = memo(function SupplyPlanMetricRows({
                 <strong>{content}</strong>
                 <small>{detailLoading ? '读取中…' : `${childCount} 项`}</small>
               </button>
+            ) : level === 'related' && column.key === 'materialCode' ? (
+              <span className="supply-plan-related-code">{content}<small>关联</small></span>
             ) : content}
           </td>
         );
@@ -210,11 +216,11 @@ const SupplyPlanMetricRows = memo(function SupplyPlanMetricRows({
       <td className="supply-plan-sticky metric-name" style={stickyStyle(fixedColumns, fixedColumns.length - 2)}>{metric}</td>
       {metricIndex === 0 ? (
         <td
-          rowSpan={SUPPLY_PLAN_ROW_TYPES.length}
+          rowSpan={metrics.length}
           className="supply-plan-sticky supply-plan-action-column supply-plan-action-rowspan"
           style={stickyStyle(fixedColumns, fixedColumns.length - 1)}
         >
-          <SupplyPlanActionBadge row={row} />
+          {level === 'related' ? null : <SupplyPlanActionBadge row={row} />}
         </td>
       ) : null}
       <td className={`numeric-cell supply-plan-data-column${metric === '预测剩余库存' && metricDataValue(row, metric) < 0 ? ' inventory-negative' : ''}`}>
@@ -313,6 +319,7 @@ export default function SupplyPlanBoard({ token, active }) {
   const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [filterDrafts, setFilterDrafts] = useState(EMPTY_FILTERS);
   const [filterDebouncing, setFilterDebouncing] = useState(false);
+  const [showRelatedDetails, setShowRelatedDetails] = useState(false);
   const [filterOptions, setFilterOptions] = useState({ businessUnit: [], productLine: [], productSeries: [], actionConclusion: [] });
   const [pagination, setPagination] = useState({ page: 1, pageSize: SUPPLY_PLAN_PAGE_SIZE, totalItems: 0, totalPages: 1, totalChildItems: 0 });
   const [modelStates, setModelStates] = useState(() => new Map());
@@ -543,16 +550,28 @@ export default function SupplyPlanBoard({ token, active }) {
       height: METRIC_BLOCK_HEIGHT
     }];
     if (!expanded) return items;
-    (detailState?.rows || []).forEach((child) => items.push({
-      key: `child-${group.modelKey}-${supplyPlanRowKey(child)}`,
-      kind: 'data',
-      row: child,
-      level: 'child',
-      expanded: false,
-      childCount: 0,
-      detailLoading: false,
-      height: METRIC_BLOCK_HEIGHT
-    }));
+    (detailState?.rows || []).forEach((child) => {
+      items.push({
+        key: `child-${group.modelKey}-${supplyPlanRowKey(child)}`,
+        kind: 'data',
+        row: child,
+        level: 'child',
+        expanded: false,
+        childCount: 0,
+        detailLoading: false,
+        height: METRIC_BLOCK_HEIGHT
+      });
+      if (showRelatedDetails) (child.relatedDetails || []).forEach((related) => items.push({
+        key: `related-${group.modelKey}-${supplyPlanRowKey(child)}-${supplyPlanRowKey(related)}`,
+        kind: 'data',
+        row: related,
+        level: 'related',
+        expanded: false,
+        childCount: 0,
+        detailLoading: false,
+        height: RELATED_METRIC_BLOCK_HEIGHT
+      }));
+    });
     if (detailState?.loading || detailState?.error) items.push({
       key: `status-${group.modelKey}`,
       kind: 'status',
@@ -560,7 +579,7 @@ export default function SupplyPlanBoard({ token, active }) {
       height: STATUS_ROW_HEIGHT
     });
     return items;
-  }), [modelStates, rows]);
+  }), [modelStates, rows, showRelatedDetails]);
 
   const showChildColumns = useMemo(
     () => flattenedRows.some((item) => item.level === 'child' || item.expanded),
@@ -634,6 +653,10 @@ export default function SupplyPlanBoard({ token, active }) {
 
       <div className="toolbar supply-plan-toolbar">
         <span className="section-count">全量跟单计划：共 {pagination.totalItems} 个产品型号，包含 {pagination.totalChildItems} 个事业部＋物料编码</span>
+        <label className="supply-plan-related-toggle">
+          <input type="checkbox" checked={showRelatedDetails} onChange={(event) => setShowRelatedDetails(event.target.checked)} />
+          <span>显示关联物料明细</span>
+        </label>
       </div>
 
       <div className="supply-plan-filter-bar" aria-label="供应计划筛选器">

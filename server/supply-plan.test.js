@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  buildProductIterationMap,
   buildSupplyPlanData,
   buildSupplyPlanWeeks,
   getActionConclusion,
@@ -76,6 +77,76 @@ test('供应计划按事业部物料聚合18和19并接入21周预测及维度',
     payload.rows[0].inventoryRemainingQty,
     payload.rows[0].onHandQty + payload.rows[0].inTransitQty - payload.rows[0].weeklyForecast[0]
   );
+});
+
+test('产品迭代关系把同型号库存和预测合并到首个latest并保留关联原始明细', () => {
+  const iterationMap = buildProductIterationMap([
+    { productLine: '护理床', productSeries: '星云', model: 'A1', latestMaterialCode: '1001', latestSku: 'LATEST', relatedMaterialCode: '1002' },
+    { productLine: '护理床', productSeries: '星云', model: 'A1', latestMaterialCode: '1003', relatedMaterialCode: '1004' }
+  ]);
+  assert.deepEqual(iterationMap.get('1001'), {
+    model: 'A1', latestMaterialCode: '1001', isLatest: true,
+    productLine: '护理床', productSeries: '星云', latestSku: 'LATEST', latestMaterialName: ''
+  });
+  assert.equal(iterationMap.get('1002').latestMaterialCode, '1001');
+  assert.equal(iterationMap.get('1003').isLatest, false);
+  assert.equal(iterationMap.get('1004').latestMaterialCode, '1001');
+
+  const payload = buildSupplyPlanData({
+    inventorySummaryData: {
+      inventorySummaryFile18: { rows: [
+        { warehouseName: '美国仓', businessUnit: '海外事业一部', materialCode: '1001', onHandQty: 5, inTransitQty: 1 },
+        { warehouseName: '美国仓', businessUnit: '海外事业一部', materialCode: '1002', onHandQty: 10, inTransitQty: 2 },
+        { warehouseName: '欧洲仓', businessUnit: '海外事业一部', materialCode: '1003', onHandQty: 20, inTransitQty: 3 },
+        { warehouseName: '欧洲仓', businessUnit: '海外事业一部', materialCode: '1004', onHandQty: 30, inTransitQty: 4 }
+      ] },
+      inventorySummaryFile19: { rows: [
+        { businessUnit: '海外事业一部', materialCode: '1002', undeliveredQty: 6 }
+      ] },
+      inventorySummaryFile21: { rows: [
+        { businessUnit: '海外事业一部', materialCode: '1001', month1: 31 },
+        { businessUnit: '海外事业一部', materialCode: '1002', month1: 62 },
+        { businessUnit: '海外事业一部', materialCode: '1003', month1: 93 },
+        { businessUnit: '海外事业一部', materialCode: '1004', month1: 124 }
+      ] }
+    },
+    dimensionData: {
+      productCategory: [{ materialCode: '1001', productLine: '护理床', productSeries: '星云', model: 'A1', sku: 'LATEST' }],
+      warehouseName: [
+        { warehouseName: '美国仓', marketplace: 'US' },
+        { warehouseName: '欧洲仓', marketplace: 'DE' }
+      ]
+    },
+    iterationMap,
+    supplyPlanSettings: { channels: { overseasUs: { safetyDays: 175 } } },
+    months: 6,
+    now
+  });
+  assert.equal(payload.rows.length, 1);
+  assert.equal(payload.rows[0].materialCode, '1001');
+  assert.equal(payload.rows[0].onHandQty, 65);
+  assert.equal(payload.rows[0].inTransitQty, 10);
+  assert.equal(payload.rows[0].undeliveredQty, 6);
+  assert.equal(payload.rows[0].weeklyForecast.reduce((sum, value) => sum + value, 0), 310);
+  assert.deepEqual(payload.rows[0].relatedDetails.map((row) => row.materialCode), ['1002', '1003', '1004']);
+  assert.equal(payload.rows[0].relatedDetails.find((row) => row.materialCode === '1002').undeliveredQty, 6);
+  assert.equal(payload.rows[0].relatedDetails.find((row) => row.materialCode === '1004').forecastTotal, 124);
+  assert.equal(payload.sourceSummary.mergedRelatedMaterials, 3);
+});
+
+test('产品迭代槽位为空时供应计划保持原物料编码逻辑', () => {
+  const payload = buildSupplyPlanData({
+    inventorySummaryData: {
+      inventorySummaryFile18: { rows: [
+        { warehouseName: '国内仓', businessUnit: '国内事业部', materialCode: '2001', onHandQty: 8, inTransitQty: 2 }
+      ] }
+    },
+    months: 6,
+    now
+  });
+  assert.equal(payload.rows.length, 1);
+  assert.equal(payload.rows[0].materialCode, '2001');
+  assert.deepEqual(payload.rows[0].relatedDetails, []);
 });
 
 test('渠道按仓库站点归类', () => {
