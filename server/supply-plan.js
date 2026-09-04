@@ -71,32 +71,38 @@ export function buildProductIterationMap(rows = []) {
     const model = text(row?.model);
     const rowLatestCode = materialCodeValue(row?.latestMaterialCode);
     if (!model || !rowLatestCode) return;
+    const relatedCodes = materialCodeList(row?.relatedMaterialCode);
     const group = modelGroups.get(model) || {
       model,
-      latestMaterialCode: rowLatestCode,
       codes: new Set(),
+      candidates: []
+    };
+    group.candidates.push({
+      latestMaterialCode: rowLatestCode,
+      hasRelated: relatedCodes.length > 0,
       productLine: text(row?.productLine),
       productSeries: text(row?.productSeries),
       latestSku: text(row?.latestSku),
       latestMaterialName: text(row?.latestMaterialName)
-    };
+    });
     group.codes.add(rowLatestCode);
-    materialCodeList(row?.relatedMaterialCode).forEach((code) => group.codes.add(code));
+    relatedCodes.forEach((code) => group.codes.add(code));
     modelGroups.set(model, group);
   });
 
   const iterationMap = new Map();
   modelGroups.forEach((group) => {
+    const selected = group.candidates.find((candidate) => candidate.hasRelated) || group.candidates[0];
     group.codes.forEach((materialCode) => {
       if (iterationMap.has(materialCode)) return;
       iterationMap.set(materialCode, {
         model: group.model,
-        latestMaterialCode: group.latestMaterialCode,
-        isLatest: materialCode === group.latestMaterialCode,
-        productLine: group.productLine,
-        productSeries: group.productSeries,
-        latestSku: group.latestSku,
-        latestMaterialName: group.latestMaterialName
+        latestMaterialCode: selected.latestMaterialCode,
+        isLatest: materialCode === selected.latestMaterialCode,
+        productLine: selected.productLine,
+        productSeries: selected.productSeries,
+        latestSku: selected.latestSku,
+        latestMaterialName: selected.latestMaterialName
       });
     });
   });

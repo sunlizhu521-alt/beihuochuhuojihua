@@ -346,7 +346,7 @@ function ActionConclusionRules() {
     <details className="supply-plan-action-rules" open>
       <summary>动作结论判定规则</summary>
       <div className="supply-plan-action-rules-content">
-        <p><strong>正常流转：</strong>未触发需要补货、调整计划或停采观察条件，按正常节奏持续监控。</p>
+        <p><strong>正常流转：</strong>不存在缺货风险，按正常节奏持续监控。</p>
         <p><strong>需要补货：</strong>存在销售预测，且计入未交付数量后，全预测窗口内仍会出现库存不足，需新增补货。</p>
         <p><strong>调整计划：</strong>存在销售预测，全链路周期内预测剩余库存会跌为负数，但计入未交付数量后全预测窗口仍可覆盖，需调整现有到货节奏。</p>
         <p><strong>停采观察：</strong>无销售预测，全链路周期内预测剩余库存持续为正，且计入未交付数量后全预测窗口也持续为正，建议暂停采购并观察库存消耗。</p>

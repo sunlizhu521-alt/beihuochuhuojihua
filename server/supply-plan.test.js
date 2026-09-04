@@ -169,6 +169,25 @@ test('产品迭代关系把同型号库存和预测合并到首个latest并保�
   assert.equal(payload.sourceSummary.mergedRelatedMaterials, 3);
 });
 
+test('产品迭代关系优先选择有related的latest，并在全部孤立时回退首个', () => {
+  const iterationMap = buildProductIterationMap([
+    { model: '119', latestMaterialCode: '8197', latestSku: '孤立SKU', relatedMaterialCode: '' },
+    { model: '119', latestMaterialCode: '8200', latestSku: '规范SKU', relatedMaterialCode: '8198,8199' },
+    { model: '120', latestMaterialCode: '9001', relatedMaterialCode: '' },
+    { model: '120', latestMaterialCode: '9002', relatedMaterialCode: '' }
+  ]);
+
+  ['8197', '8198', '8199', '8200'].forEach((materialCode) => {
+    assert.equal(iterationMap.get(materialCode).latestMaterialCode, '8200');
+  });
+  assert.equal(iterationMap.get('8197').isLatest, false);
+  assert.equal(iterationMap.get('8200').isLatest, true);
+  assert.equal(iterationMap.get('8200').latestSku, '规范SKU');
+  assert.equal(iterationMap.get('9001').latestMaterialCode, '9001');
+  assert.equal(iterationMap.get('9001').isLatest, true);
+  assert.equal(iterationMap.get('9002').isLatest, false);
+});
+
 test('产品迭代槽位为空时供应计划保持原物料编码逻辑', () => {
   const payload = buildSupplyPlanData({
     inventorySummaryData: {
