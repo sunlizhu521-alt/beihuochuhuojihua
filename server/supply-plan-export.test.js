@@ -63,18 +63,18 @@ function exportFixture() {
   });
 }
 
-test('导出数据遵循当前筛选并生成六个周指标行', () => {
+test('导出数据只保留建议采购正数的latest编码并排除预测剩余库存指标行', () => {
   const data = exportFixture();
   assert.equal(data.modelCount, 1);
   assert.equal(data.childCount, 1);
-  assert.equal(data.detailRows.length, 6);
+  assert.equal(data.detailRows.length, 5);
   assert.equal(data.detailColumns.at(-2), '当前周');
   assert.equal(data.detailColumns.at(-1), 'W37');
   assert.deepEqual(data.detailRows.map((row) => row[17]), [
-    '销售预测', '未交付', '在途', '在库', '预测剩余库存', '建议采购'
+    '销售预测', '未交付', '在途', '在库', '建议采购'
   ]);
-  assert.deepEqual(data.detailRows.map((row) => row[18]), [4, 3, 5, 10, 11, 8]);
-  assert.deepEqual(data.detailRows.map((row) => row[19]), [6, '', '', '', '', '']);
+  assert.deepEqual(data.detailRows.map((row) => row[18]), [4, 3, 5, 10, 8]);
+  assert.deepEqual(data.detailRows.map((row) => row[19]), [6, '', '', '', '']);
 });
 
 test('建议采购汇总只保留正数并关联采购分工与下单时间', () => {
@@ -155,7 +155,7 @@ test('生成的Excel包含双Sheet、冻结窗格与指标样式', async () => {
   assert.equal(detailSheet.views[0].ySplit, 1);
   assert.equal(detailSheet.getCell('A1').fill.fgColor.argb, 'FFD9EAF7');
   assert.equal(detailSheet.getCell('A3').fill.fgColor.argb, 'FFFFF3CD');
-  assert.equal(detailSheet.getCell('S7').font.color.argb, 'FFC00000');
+  assert.equal(detailSheet.getCell('S6').font.color.argb, 'FFC00000');
   assert.equal(purchaseSheet.getCell('H2').font.color.argb, 'FFC00000');
   assert.equal(purchaseSheet.getCell('I2').numFmt, 'yyyy-mm-dd');
 });

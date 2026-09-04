@@ -7,7 +7,6 @@ export const SUPPLY_PLAN_EXPORT_METRICS = [
   '未交付',
   '在途',
   '在库',
-  '预测剩余库存',
   '建议采购'
 ];
 
@@ -28,7 +27,6 @@ const METRIC_FILLS = {
   未交付: 'FFFFF3CD',
   在途: 'FFE2F0D9',
   在库: 'FFDDEBF7',
-  预测剩余库存: 'FFE4DFEC',
   建议采购: 'FFFCE4D6'
 };
 const HEADER_FILL = 'FFD9EAF7';
@@ -113,7 +111,6 @@ function metricWeekValue(row, metric, weekIndex) {
   if (metric === '未交付') return numberValue(row.undeliveredQty);
   if (metric === '在途') return numberValue(row.inTransitQty);
   if (metric === '在库') return numberValue(row.onHandQty);
-  if (metric === '预测剩余库存') return numberValue(row.inventoryRemainingQty);
   return metric === '建议采购' ? numberValue(row.purchaseGap) : '';
 }
 
@@ -136,7 +133,7 @@ export function buildSupplyPlanExportData({
 } = {}) {
   const weeks = Array.isArray(supplyPlanData.weeks) ? supplyPlanData.weeks : [];
   const rows = (Array.isArray(supplyPlanData.rows) ? supplyPlanData.rows : [])
-    .filter((row) => !row.isRelatedDetail && matchesSupplyPlanFilters(row, filters));
+    .filter((row) => !row.isRelatedDetail && numberValue(row.purchaseGap) > 0 && matchesSupplyPlanFilters(row, filters));
   const assignments = assignmentMap(assignmentRows);
   const detailRows = [];
   const purchaseRows = [];

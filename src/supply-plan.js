@@ -50,7 +50,7 @@ export const SUPPLY_PLAN_FILTER_FIELDS = Object.freeze([
 ]);
 export const SUPPLY_PLAN_INVENTORY_STATUS_OPTIONS = Object.freeze(['在库', '在途', '未交付']);
 export const SUPPLY_PLAN_FORECAST_STATUS_OPTIONS = Object.freeze(['有', '无']);
-const ACTION_CONCLUSION_ORDER = ['正常流转', '加急补货', '调整计划', '停采观察'];
+const ACTION_CONCLUSION_ORDER = ['正常流转', '需要补货', '调整计划', '停采观察'];
 
 export function supplyPlanVirtualWindow(items = [], scrollTop = 0, viewportHeight = 0, overscanHeight = 0) {
   let offset = 0;

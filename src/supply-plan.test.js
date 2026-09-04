@@ -121,11 +121,11 @@ test('事业部筛选按星号前名称合并选项并匹配原始明细', () =>
 
 test('供应计划支持动作结论筛选', () => {
   const rows = [
-    { businessUnit: '一部', productLine: 'A', productSeries: 'S1', actionConclusion: '加急补货' },
+    { businessUnit: '一部', productLine: 'A', productSeries: 'S1', actionConclusion: '需要补货' },
     { businessUnit: '二部', productLine: 'B', productSeries: 'S2', actionConclusion: '正常流转' }
   ];
-  assert.deepEqual(filterSupplyPlanRows(rows, { actionConclusion: '加急补货' }), [rows[0]]);
-  assert.deepEqual(buildSupplyPlanFilterOptions(rows, {}).actionConclusion, ['正常流转', '加急补货', '调整计划', '停采观察']);
+  assert.deepEqual(filterSupplyPlanRows(rows, { actionConclusion: '需要补货' }), [rows[0]]);
+  assert.deepEqual(buildSupplyPlanFilterOptions(rows, {}).actionConclusion, ['正常流转', '需要补货', '调整计划', '停采观察']);
 });
 
 test('供应计划支持销售产品分类、库存状态复选和销售预测复选', () => {

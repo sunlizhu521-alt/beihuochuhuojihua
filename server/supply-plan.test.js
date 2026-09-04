@@ -4,6 +4,8 @@ import {
   buildProductIterationMap,
   buildSupplyPlanData,
   buildSupplyPlanWeeks,
+  calculateSuggestedPurchase,
+  calculateWeeklyRemainingStock,
   getActionConclusion,
   groupSupplyPlanModels,
   normalizeSupplyPlanBusinessUnit,
@@ -79,6 +81,37 @@ test('供应计划按事业部物料聚合18和19并接入21周预测及维度',
     payload.rows[0].inventoryRemainingQty,
     payload.rows[0].onHandQty + payload.rows[0].inTransitQty - payload.rows[0].weeklyForecast[0]
   );
+  assert.equal(payload.rows[0].weeklyRemainingStock.length, payload.weeks.length);
+  assert.equal(
+    payload.rows[0].weeklyRemainingStock[1],
+    payload.rows[0].weeklyRemainingStock[0] - payload.rows[0].weeklyForecast[1]
+  );
+});
+
+test('预测剩余库存逐周递推且建议采购按首次低于安全库存周倒退计算', () => {
+  const weeklyForecast = [10, 20, 15, 5];
+  const weeklyRemainingStock = calculateWeeklyRemainingStock({
+    onHandQty: 70,
+    inTransitQty: 30,
+    weeklyForecast
+  });
+  assert.deepEqual(weeklyRemainingStock, [90, 70, 55, 50]);
+  assert.equal(calculateSuggestedPurchase({
+    onHandQty: 70,
+    inTransitQty: 30,
+    undeliveredQty: 5,
+    safetyStockQty: 80,
+    weeklyForecast,
+    weeklyRemainingStock
+  }), 5);
+  assert.equal(calculateSuggestedPurchase({
+    onHandQty: 70,
+    inTransitQty: 30,
+    undeliveredQty: 0,
+    safetyStockQty: 40,
+    weeklyForecast,
+    weeklyRemainingStock
+  }), 0);
 });
 
 test('产品迭代关系把同型号库存和预测合并到首个latest并保留关联原始明细', () => {
@@ -225,62 +258,53 @@ test('型号详情使用产品线系列型号唯一键避免同名串数据', ()
   assert.equal(groupSupplyPlanModels(rows).length, 2);
 });
 
-test('动作结论覆盖正常、加急、调整、停采及近4周预测兜底', () => {
+test('动作结论按预测、全链路剩余和含未交付全窗口剩余判定', () => {
   const normal = getActionConclusion({
-    weeklyForecast: [7, 7, 7, 7], onHandQty: 20, inTransitQty: 0,
-    purchaseGap: 0, safetyStockQty: 10, totalLeadTimeDays: 30
+    weeklyForecast: [7, 7, 7, 7], onHandQty: 100, inTransitQty: 0,
+    undeliveredQty: 0, purchaseGap: 0, safetyStockQty: 10, totalLeadTimeDays: 30
   });
   assert.equal(normal.conclusion, '正常流转');
   assert.equal(normal.forecastDaily, 1);
-  assert.equal(normal.stockCoverDays, 20);
-  assert.equal(normal.daysUntilShortage, 10);
+  assert.equal(normal.stockCoverDays, 100);
+  assert.equal(normal.daysUntilShortage, 0);
 
-  const outOfStock = getActionConclusion({
-    weeklyForecast: [7, 0, 0, 0], onHandQty: 0, inTransitQty: 0,
-    purchaseGap: 0, safetyStockQty: 10, totalLeadTimeDays: 30
+  const needPurchase = getActionConclusion({
+    weeklyForecast: [10, 10, 10, 10], onHandQty: 15, inTransitQty: 0,
+    undeliveredQty: 5, purchaseGap: 30, safetyStockQty: 10, totalLeadTimeDays: 14
   });
-  assert.equal(outOfStock.conclusion, '加急补货');
-  assert.equal(outOfStock.daysUntilShortage, 0);
-  assert.equal(outOfStock.color, '#f44336');
-
-  const urgent = getActionConclusion({
-    weeklyForecast: [7, 0, 0, 0], onHandQty: 20, inTransitQty: 0,
-    purchaseGap: 5, safetyStockQty: 10, totalLeadTimeDays: 30
-  });
-  assert.equal(urgent.conclusion, '加急补货');
+  assert.equal(needPurchase.conclusion, '需要补货');
+  assert.equal(needPurchase.color, '#f44336');
 
   const adjust = getActionConclusion({
-    weeklyForecast: [7, 0, 0, 0], onHandQty: 10, inTransitQty: 0,
-    purchaseGap: 5, safetyStockQty: 10, totalLeadTimeDays: 40
+    weeklyForecast: [10, 10, 0, 0], onHandQty: 15, inTransitQty: 0,
+    undeliveredQty: 20, purchaseGap: 5, safetyStockQty: 10, totalLeadTimeDays: 14
   });
   assert.equal(adjust.conclusion, '调整计划');
-  assert.equal(adjust.daysUntilShortage, 30);
 
   const pause = getActionConclusion({
-    weeklyForecast: [0, 0, 0, 0], onHandQty: 21, inTransitQty: 0,
-    purchaseGap: 0, safetyStockQty: 10, totalLeadTimeDays: 30
+    weeklyForecast: [0, 0, 0, 0], onHandQty: 1, inTransitQty: 0,
+    undeliveredQty: 1, purchaseGap: 0, safetyStockQty: 10, totalLeadTimeDays: 30
   });
   assert.equal(pause.conclusion, '停采观察');
   assert.equal(pause.stockCoverDays, 999);
   assert.equal(pause.color, '#9e9e9e');
 
-  const fallback = getActionConclusion({
-    weeklyForecast: [0, 7, 7, 14], onHandQty: 10, inTransitQty: 0,
-    purchaseGap: 0, safetyStockQty: 10, totalLeadTimeDays: 30
+  const empty = getActionConclusion({
+    weeklyForecast: [0, 0, 0, 0], onHandQty: 0, inTransitQty: 0,
+    undeliveredQty: 0, purchaseGap: 0, safetyStockQty: 10, totalLeadTimeDays: 30
   });
-  assert.equal(fallback.forecastDaily, 1);
-  assert.equal(fallback.stockCoverDays, 10);
+  assert.equal(empty.conclusion, '正常流转');
 });
 
-test('父行动作结论按加急、调整、停采、正常的严重度汇总', () => {
+test('父行动作结论按需要补货、调整、停采、正常的严重度汇总', () => {
   const base = { modelKey: '产品线\u001f系列\u001fM1', productLine: '产品线', productSeries: '系列', model: 'M1', weeklyForecast: [] };
   const groups = groupSupplyPlanModels([
     { ...base, businessUnit: '一部', materialCode: '1', actionConclusion: '正常流转', actionColor: '#4caf50' },
     { ...base, businessUnit: '二部', materialCode: '2', actionConclusion: '停采观察', actionColor: '#9e9e9e' },
     { ...base, businessUnit: '三部', materialCode: '3', actionConclusion: '调整计划', actionColor: '#ff9800' },
-    { ...base, businessUnit: '四部', materialCode: '4', actionConclusion: '加急补货', actionColor: '#f44336' }
+    { ...base, businessUnit: '四部', materialCode: '4', actionConclusion: '需要补货', actionColor: '#f44336' }
   ]);
-  assert.equal(groups[0].actionConclusion, '加急补货');
+  assert.equal(groups[0].actionConclusion, '需要补货');
   assert.equal(groups[0].actionColor, '#f44336');
 });
 
@@ -314,18 +338,18 @@ test('父行按关联物料编码跨事业部聚合关联明细且保留首个SK
 
 test('动作筛选只保留符合结论的型号并生成联动筛选选项', () => {
   const rows = [
-    { modelKey: 'A', productLine: '护理床', productSeries: '星云', businessUnit: '一部', actionConclusion: '加急补货', weeklyForecast: [] },
+    { modelKey: 'A', productLine: '护理床', productSeries: '星云', businessUnit: '一部', actionConclusion: '需要补货', weeklyForecast: [] },
     { modelKey: 'B', productLine: '轮椅', productSeries: '标准', businessUnit: '二部', actionConclusion: '正常流转', weeklyForecast: [] }
   ];
-  const page = paginateSupplyPlanData({ ok: true, rows, weeks: [] }, { filters: { actionConclusion: '加急补货' } });
+  const page = paginateSupplyPlanData({ ok: true, rows, weeks: [] }, { filters: { actionConclusion: '需要补货' } });
   assert.equal(page.pagination.totalItems, 1);
   assert.equal(page.rows[0].modelKey, 'A');
-  assert.deepEqual(page.filterOptions.actionConclusion, ['正常流转', '加急补货', '调整计划', '停采观察']);
+  assert.deepEqual(page.filterOptions.actionConclusion, ['正常流转', '需要补货', '调整计划', '停采观察']);
 });
 
 test('备货计划预留接口只整理匹配动作的明细且不声明已推送', () => {
   const payload = { rows: [
-    { modelId: 'M1', model: 'A1', businessUnit: '一部', materialCode: '1001', sku: 'S1', actionConclusion: '加急补货', purchaseGap: 12 },
+    { modelId: 'M1', model: 'A1', businessUnit: '一部', materialCode: '1001', sku: 'S1', actionConclusion: '需要补货', purchaseGap: 12 },
     { modelId: 'M1', model: 'A1', businessUnit: '二部', materialCode: '1002', sku: 'S2', actionConclusion: '正常流转', purchaseGap: 0 }
   ] };
   const result = prepareSupplyPlanBeihuoPush(payload, { modelIds: ['M1'], actionType: 'urgent' });

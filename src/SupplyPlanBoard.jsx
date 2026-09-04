@@ -177,7 +177,7 @@ function stickyStyle(columns, index) {
 
 function metricWeekValue(row, metric, weekIndex) {
   if (metric === '销售预测') return row.weeklyForecast?.[weekIndex] || 0;
-  if (metric === '预测剩余库存') return weekIndex === 0 ? row.inventoryRemainingQty : null;
+  if (metric === '预测剩余库存') return row.weeklyRemainingStock?.[weekIndex] ?? null;
   if (weekIndex > 0) return 0;
   if (metric === '未交付') return row.undeliveredQty;
   if (metric === '在途') return row.inTransitQty;
@@ -322,14 +322,14 @@ const SupplyPlanMetricRows = memo(function SupplyPlanMetricRows({
           </td>
         );
       })}
-      <td className={`numeric-cell supply-plan-data-column${metric === '预测剩余库存' && metricDataValue(row, metric) < 0 ? ' inventory-negative' : ''}`}>
+      <td className={`numeric-cell supply-plan-data-column${metric === '预测剩余库存' && metricDataValue(row, metric) < Number(row.safetyStockQty || 0) ? ' inventory-negative' : ''}`}>
         {numberText(metricDataValue(row, metric))}
       </td>
       {beforeWidth ? <td aria-hidden="true" className="supply-plan-week-spacer" style={{ width: beforeWidth, minWidth: beforeWidth }} /> : null}
       {visibleWeeks.map((week, visibleIndex) => {
         const weekIndex = weekStart + visibleIndex;
         const value = metricWeekValue(row, metric, weekIndex);
-        const negativeRemaining = metric === '预测剩余库存' && value !== null && value < 0;
+        const negativeRemaining = metric === '预测剩余库存' && value !== null && value < Number(row.safetyStockQty || 0);
         return (
           <td key={week.key} className={`numeric-cell${metric === '建议采购' && value > 0 ? ' gap-positive' : ''}${negativeRemaining ? ' inventory-negative' : ''}`}>
             {value === null ? '' : numberText(value)}
@@ -346,12 +346,12 @@ function ActionConclusionRules() {
     <details className="supply-plan-action-rules" open>
       <summary>动作结论判定规则</summary>
       <div className="supply-plan-action-rules-content">
-        <p><strong>正常流转：</strong>未触发加急补货、调整计划或停采观察条件，按正常节奏持续监控。</p>
-        <p><strong>加急补货：</strong>预测剩余库存小于 0；或建议采购数量大于 0 且距缺货天数不超过 14 天，建议立即下单补货。</p>
-        <p><strong>调整计划：</strong>建议采购数量大于 0，且距缺货天数大于 14 天、不超过 45 天，需重新评估需求与供应节奏。</p>
-        <p><strong>停采观察：</strong>建议采购数量为 0、在库量大于安全库存数量的 2 倍，且连续 4 周销售预测均为 0，建议暂停采购并观察库存消耗。</p>
+        <p><strong>正常流转：</strong>未触发需要补货、调整计划或停采观察条件，按正常节奏持续监控。</p>
+        <p><strong>需要补货：</strong>存在销售预测，且计入未交付数量后，全预测窗口内仍会出现库存不足，需新增补货。</p>
+        <p><strong>调整计划：</strong>存在销售预测，全链路周期内预测剩余库存会跌为负数，但计入未交付数量后全预测窗口仍可覆盖，需调整现有到货节奏。</p>
+        <p><strong>停采观察：</strong>无销售预测，全链路周期内预测剩余库存持续为正，且计入未交付数量后全预测窗口也持续为正，建议暂停采购并观察库存消耗。</p>
         <p className="supply-plan-action-rules-note">
-          距缺货天数 = 全链路天数 − 库存可销天数（最低按 0 计算；预测剩余库存小于 0 时按 0 计算）。判定优先级：停采观察 → 加急补货 → 调整计划 → 正常流转。
+          预测剩余库存按周递推扣减销售预测；建议采购数量按首次低于安全库存的周倒退计算。判定优先级：停采观察 → 需要补货 → 调整计划 → 正常流转。
         </p>
       </div>
     </details>

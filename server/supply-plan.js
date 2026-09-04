@@ -216,7 +216,7 @@ const SUPPLY_PLAN_ACTIONS = {
   正常流转: { color: '#4caf50', severity: 0 },
   停采观察: { color: '#9e9e9e', severity: 1 },
   调整计划: { color: '#ff9800', severity: 2 },
-  加急补货: { color: '#f44336', severity: 3 }
+  需要补货: { color: '#f44336', severity: 3 }
 };
 
 function roundedMetric(value) {
@@ -227,26 +227,77 @@ function weekForecastQuantity(item, index) {
   return numberValue(item.weekForecasts?.[index]?.forecastQty ?? item.weeklyForecast?.[index]);
 }
 
+export function calculateWeeklyRemainingStock({ onHandQty = 0, inTransitQty = 0, weeklyForecast = [] } = {}) {
+  let remaining = numberValue(onHandQty) + numberValue(inTransitQty);
+  return weeklyForecast.map((forecastQty) => {
+    remaining -= numberValue(forecastQty);
+    return roundedMetric(remaining);
+  });
+}
+
+export function calculateSuggestedPurchase({
+  onHandQty = 0,
+  inTransitQty = 0,
+  undeliveredQty = 0,
+  safetyStockQty = 0,
+  weeklyForecast = [],
+  weeklyRemainingStock = []
+} = {}) {
+  const remaining = weeklyRemainingStock.length
+    ? weeklyRemainingStock.map(numberValue)
+    : calculateWeeklyRemainingStock({ onHandQty, inTransitQty, weeklyForecast });
+  const firstBelowSafetyIndex = remaining.findIndex((value) => value < numberValue(safetyStockQty));
+  if (firstBelowSafetyIndex < 0) return 0;
+  const cumulativeForecast = weeklyForecast
+    .slice(0, firstBelowSafetyIndex + 1)
+    .reduce((sum, value) => sum + numberValue(value), 0);
+  return roundedMetric(Math.max(
+    0,
+    numberValue(safetyStockQty) + cumulativeForecast
+      - numberValue(onHandQty)
+      - numberValue(inTransitQty)
+      - numberValue(undeliveredQty)
+  ));
+}
+
 export function getActionConclusion(item = {}) {
+  const weeklyForecast = Array.isArray(item.weeklyForecast)
+    ? item.weeklyForecast.map(numberValue)
+    : (item.weekForecasts || []).map((week) => numberValue(week?.forecastQty));
+  const weeklyRemainingStock = Array.isArray(item.weeklyRemainingStock) && item.weeklyRemainingStock.length
+    ? item.weeklyRemainingStock.map(numberValue)
+    : calculateWeeklyRemainingStock({ ...item, weeklyForecast });
+  const weeklyRemainingWithUndelivered = weeklyRemainingStock
+    .map((value) => roundedMetric(value + numberValue(item.undeliveredQty)));
   const currentWeekForecast = weekForecastQuantity(item, 0);
   const fourWeekForecast = Array.from({ length: 4 }, (_, index) => weekForecastQuantity(item, index));
   const forecastDaily = currentWeekForecast > 0
     ? currentWeekForecast / 7
     : fourWeekForecast.reduce((sum, value) => sum + value, 0) / 28;
   const stockCoverDays = forecastDaily > 0 ? numberValue(item.onHandQty) / forecastDaily : 999;
-  const inventoryRemaining = numberValue(item.inTransitQty) + numberValue(item.onHandQty) - currentWeekForecast;
+  const inventoryRemaining = numberValue(weeklyRemainingStock[0]);
   const rawDaysUntilShortage = Math.max(0, numberValue(item.totalLeadTimeDays) - stockCoverDays);
   const daysUntilShortage = inventoryRemaining < 0 ? 0 : rawDaysUntilShortage;
-  const suggestedPurchase = numberValue(item.suggestedPurchase ?? item.purchaseGap);
-  const safetyStock = numberValue(item.safetyStock ?? item.safetyStockQty);
-  const hasNoForecast4Weeks = fourWeekForecast.every((value) => value === 0);
+  const hasForecast = weeklyForecast.some((value) => value > 0);
+  const fullChainWeekCount = Math.min(
+    weeklyRemainingStock.length,
+    Math.max(1, Math.ceil(numberValue(item.totalLeadTimeDays) / 7))
+  );
+  const isNegativeWithinFullChain = weeklyRemainingStock
+    .slice(0, fullChainWeekCount)
+    .some((value) => value < 0);
+  const isNegativeWithUndeliveredInWindow = weeklyRemainingWithUndelivered.some((value) => value < 0);
+  const isPositiveWithinFullChain = weeklyRemainingStock
+    .slice(0, fullChainWeekCount)
+    .every((value) => value > 0);
+  const isPositiveWithUndeliveredInWindow = weeklyRemainingWithUndelivered.every((value) => value > 0);
   let conclusion = '正常流转';
 
-  if (suggestedPurchase <= 0 && numberValue(item.onHandQty) > safetyStock * 2 && hasNoForecast4Weeks) {
+  if (!hasForecast && isPositiveWithinFullChain && isPositiveWithUndeliveredInWindow) {
     conclusion = '停采观察';
-  } else if (inventoryRemaining < 0 || (suggestedPurchase > 0 && daysUntilShortage <= 14)) {
-    conclusion = '加急补货';
-  } else if (suggestedPurchase > 0 && daysUntilShortage <= 45) {
+  } else if (hasForecast && isNegativeWithUndeliveredInWindow) {
+    conclusion = '需要补货';
+  } else if (hasForecast && isNegativeWithinFullChain && isPositiveWithUndeliveredInWindow) {
     conclusion = '调整计划';
   }
 
@@ -273,21 +324,24 @@ function withSupplyPlanCalculations(row) {
   const forecastTotal = weeklyForecast.reduce((sum, value) => sum + value, 0);
   const dailyForecast = Math.round(numberValue(row.forecastDailyQty));
   const safetyStockQty = dailyForecast * numberValue(row.safetyDays);
-  const currentWeekForecast = numberValue(weeklyForecast[0]);
+  const weeklyRemainingStock = calculateWeeklyRemainingStock({ ...row, weeklyForecast });
+  const weeklyRemainingWithUndelivered = weeklyRemainingStock
+    .map((value) => roundedMetric(value + numberValue(row.undeliveredQty)));
   const calculated = {
     ...row,
     weeklyForecast,
+    weeklyRemainingStock,
+    weeklyRemainingWithUndelivered,
     forecastTotal,
     dailyForecast,
     safetyStockQty,
-    inventoryRemainingQty: numberValue(row.inTransitQty) + numberValue(row.onHandQty) - currentWeekForecast,
-    purchaseGap: Math.max(
-      0,
-      safetyStockQty + currentWeekForecast
-        - numberValue(row.onHandQty)
-        - numberValue(row.inTransitQty)
-        - numberValue(row.undeliveredQty)
-    )
+    inventoryRemainingQty: numberValue(weeklyRemainingStock[0]),
+    purchaseGap: calculateSuggestedPurchase({
+      ...row,
+      safetyStockQty,
+      weeklyForecast,
+      weeklyRemainingStock
+    })
   };
   const action = getActionConclusion(calculated);
   return {
@@ -571,7 +625,7 @@ const MODEL_SUM_FIELDS = [
 ];
 
 const FILTER_FIELDS = ['businessUnit', 'productLine', 'productSeries', 'productType', 'actionConclusion'];
-const ACTION_CONCLUSION_ORDER = ['正常流转', '加急补货', '调整计划', '停采观察'];
+const ACTION_CONCLUSION_ORDER = ['正常流转', '需要补货', '调整计划', '停采观察'];
 const INVENTORY_STATUS_OPTIONS = ['在库', '在途', '未交付'];
 const FORECAST_STATUS_OPTIONS = ['有', '无'];
 
@@ -636,6 +690,8 @@ export function groupSupplyPlanModels(rows = [], weekCount = 0) {
       skuName: '按型号汇总',
       childCount: 0,
       weeklyForecast: Array.from({ length: weekCount }, () => 0),
+      weeklyRemainingStock: Array.from({ length: weekCount }, () => 0),
+      weeklyRemainingWithUndelivered: Array.from({ length: weekCount }, () => 0),
       relatedDetailsByMaterialCode: new Map()
     };
     MODEL_SUM_FIELDS.forEach((field) => {
@@ -643,6 +699,12 @@ export function groupSupplyPlanModels(rows = [], weekCount = 0) {
     });
     group.weeklyForecast = group.weeklyForecast.map((value, index) => (
       value + numberValue(row.weeklyForecast?.[index])
+    ));
+    group.weeklyRemainingStock = group.weeklyRemainingStock.map((value, index) => (
+      value + numberValue(row.weeklyRemainingStock?.[index])
+    ));
+    group.weeklyRemainingWithUndelivered = group.weeklyRemainingWithUndelivered.map((value, index) => (
+      value + numberValue(row.weeklyRemainingWithUndelivered?.[index])
     ));
     group.childCount += 1;
     (row.relatedDetails || []).forEach((detail) => {
@@ -734,7 +796,7 @@ export function supplyPlanModelDetail(payload, {
 }
 
 const BEIHUO_PUSH_ACTIONS = {
-  urgent: { conclusion: '加急补货', targetPool: '紧急补货' },
+  urgent: { conclusion: '需要补货', targetPool: '紧急补货' },
   normal: { conclusion: '调整计划', targetPool: '常规补货' },
   pause: { conclusion: '停采观察', targetPool: '暂停采购' }
 };
