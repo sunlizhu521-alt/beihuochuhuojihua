@@ -82,6 +82,27 @@ test('后端可按别名解析三个新槽位并过滤零数量行', () => {
   });
 });
 
+test('库存解析结果保留源列供上传接口校验映射', () => {
+  const slot = INVENTORY_SUMMARY_LIBRARY_SLOTS.find(({ id }) => id === 'inventorySummaryFile18');
+  const mapping = {
+    warehouseName: '仓库',
+    businessUnit: '事业部',
+    materialCode: '物料编码',
+    onHandQty: '在库',
+    inTransitQty: '在途'
+  };
+  const inventory = parseInventorySummaryWorkbook(workbookFile([
+    Object.values(mapping),
+    ['华南仓', '国内事业部', 'MAT-001', 12, 3]
+  ]), slot.id, mapping);
+
+  assert.deepEqual(inventory.columns, Object.values(mapping));
+  assert.deepEqual(
+    mappingValidation(mapping, slot.fields, slot.requiredFields, inventory.columns),
+    { missingFields: [], duplicateColumns: [], unknownColumns: [] }
+  );
+});
+
 test('后端拒绝缺少必填月份的M+6预测文件', () => {
   assert.throws(() => parseInventorySummaryWorkbook(workbookFile([
     ['事业部', '物料编码', '8', '9', '10', '11', '12'],

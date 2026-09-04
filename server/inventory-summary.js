@@ -690,6 +690,7 @@ export function parseInventorySummaryWorkbook(file, slotId, mapping = {}, option
   }, 0);
   return {
     rows,
+    columns: parsed.columns,
     sheetName,
     sheetNames: workbook.SheetNames,
     mapping: {
