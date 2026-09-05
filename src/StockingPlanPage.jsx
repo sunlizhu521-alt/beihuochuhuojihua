@@ -1,5 +1,6 @@
 import { Fragment, memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { API } from './api-base.js';
+import SharedFilterBar from './components/SharedFilterBar.jsx';
 import RouteSettingsPanel from './RouteSettingsPanel.jsx';
 import {
   ROUTE_SETTINGS_EVENT,
@@ -8,6 +9,7 @@ import {
   saveRouteSettings
 } from './route-settings-storage.js';
 import {
+  buildStockingPlanFilterOptions,
   buildStockingPlanRows,
   filterStockingPlanRows,
   groupStockingPlanRowsByMaterial
@@ -18,9 +20,7 @@ const EMPTY_FILTERS = Object.freeze({
   productLine: Object.freeze([]),
   productSeries: Object.freeze([]),
   productType: Object.freeze([]),
-  businessUnit: Object.freeze([]),
-  inventoryStatus: '',
-  hasForecast: ''
+  businessUnit: Object.freeze([])
 });
 const MULTI_FILTERS = [
   ['productLine', '产品线'],
@@ -47,45 +47,6 @@ async function apiRequest(path, token, options = {}) {
   if (!response.ok) throw new Error(payload.error || '请求失败');
   return payload;
 }
-
-function filterOptions(rows, field) {
-  return [...new Set(rows.map((row) => String(row[field] || '').trim()).filter(Boolean))]
-    .sort((left, right) => left.localeCompare(right, 'zh-CN', { numeric: true }));
-}
-
-const StockingPlanMultiFilter = memo(function StockingPlanMultiFilter({ field, label, options, selected, onChange }) {
-  const visibleSelected = selected.slice(0, 2);
-  return (
-    <div className="stocking-plan-multi-field">
-      <span>{label}</span>
-      <details className="stocking-plan-filter-multi">
-        <summary aria-label={label}>
-          <span className="stocking-plan-selected-values">
-            {visibleSelected.length ? visibleSelected.map((value) => (
-              <span className="stocking-plan-selected-tag" key={value}>{value}</span>
-            )) : <span className="stocking-plan-filter-all">全部{label}</span>}
-            {selected.length > visibleSelected.length ? (
-              <span className="stocking-plan-selected-count">+{selected.length - visibleSelected.length}</span>
-            ) : null}
-          </span>
-        </summary>
-        <div className="stocking-plan-filter-options" role="group" aria-label={`${label}选项`}>
-          {options.length ? options.map((option) => (
-            <label key={option}>
-              <input
-                type="checkbox"
-                aria-label={`${label}：${option}`}
-                checked={selected.includes(option)}
-                onChange={(event) => onChange(field, option, event.target.checked)}
-              />
-              <span>{option}</span>
-            </label>
-          )) : <span className="stocking-plan-filter-empty">暂无选项</span>}
-        </div>
-      </details>
-    </div>
-  );
-});
 
 const StockingPlanParentRow = memo(function StockingPlanParentRow({
   row,
@@ -230,7 +191,13 @@ export default function StockingPlanPage({ token, active }) {
   }, []);
 
   const plan = useMemo(() => buildStockingPlanRows(source || {}), [source]);
-  const options = useMemo(() => Object.fromEntries(MULTI_FILTERS.map(([field]) => [field, filterOptions(plan.rows, field)])), [plan.rows]);
+  const options = useMemo(() => buildStockingPlanFilterOptions(plan.rows, filters), [filters, plan.rows]);
+  const filterConfigs = useMemo(() => MULTI_FILTERS.map(([key, label]) => ({
+    key,
+    label,
+    options: options[key] || [],
+    multiSelect: true
+  })), [options]);
   const filteredRows = useMemo(() => filterStockingPlanRows(plan.rows, filters), [filters, plan.rows]);
   const materialGroups = useMemo(() => groupStockingPlanRowsByMaterial(filteredRows), [filteredRows]);
   const totalPages = Math.max(1, Math.ceil(materialGroups.length / MATERIALS_PER_PAGE));
@@ -262,16 +229,13 @@ export default function StockingPlanPage({ token, active }) {
     });
   }, []);
 
-  const changeMultiFilter = useCallback((field, option, checked) => {
-    setFilters((current) => ({
-      ...current,
-      [field]: checked ? [...current[field], option] : current[field].filter((value) => value !== option)
-    }));
+  const changeFilter = useCallback((field, values) => {
+    setFilters((current) => ({ ...current, [field]: values }));
     setPage(1);
   }, []);
 
-  const changeSingleFilter = useCallback((field, value) => {
-    setFilters((current) => ({ ...current, [field]: value }));
+  const clearFilters = useCallback(() => {
+    setFilters(EMPTY_FILTERS);
     setPage(1);
   }, []);
 
@@ -334,36 +298,13 @@ export default function StockingPlanPage({ token, active }) {
         onChange={changeRouteParam}
         onSave={saveRouteParams}
       />
-      <section className="supply-plan-filter-bar stocking-plan-filter-panel" aria-label="备货需求计划筛选器">
-        {MULTI_FILTERS.map(([field, label]) => (
-          <StockingPlanMultiFilter
-            key={field}
-            field={field}
-            label={label}
-            options={options[field] || []}
-            selected={filters[field]}
-            onChange={changeMultiFilter}
-          />
-        ))}
-        <label className="stocking-plan-filter-select">
-          <span>库存状态</span>
-          <select aria-label="库存状态" value={filters.inventoryStatus} onChange={(event) => changeSingleFilter('inventoryStatus', event.target.value)}>
-            <option value="">全部</option>
-            <option value="onHand">在库</option>
-            <option value="inTransit">在途</option>
-            <option value="undelivered">未交付</option>
-          </select>
-        </label>
-        <label className="stocking-plan-filter-select">
-          <span>是否有预测</span>
-          <select aria-label="是否有预测" value={filters.hasForecast} onChange={(event) => changeSingleFilter('hasForecast', event.target.value)}>
-            <option value="">全部</option>
-            <option value="yes">有</option>
-            <option value="no">无</option>
-          </select>
-        </label>
-        <button type="button" className="secondary" onClick={() => { setFilters(EMPTY_FILTERS); setPage(1); }}>清空筛选</button>
-      </section>
+      <SharedFilterBar
+        filters={filterConfigs}
+        values={filters}
+        onChange={changeFilter}
+        onClear={clearFilters}
+        ariaLabel="备货需求计划筛选器"
+      />
       {error ? <p className="error-message">{error}</p> : null}
       {message ? <p className="success-message">{message}</p> : null}
       {!loading && !error && plan.rows.length === 0 ? (

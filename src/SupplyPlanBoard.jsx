@@ -11,6 +11,7 @@ import {
   supplyPlanVirtualWindow
 } from './supply-plan.js';
 import { API } from './api-base.js';
+import SharedFilterBar from './components/SharedFilterBar.jsx';
 import RouteSettingsPanel from './RouteSettingsPanel.jsx';
 import {
   ROUTE_SETTINGS_EVENT,
@@ -52,13 +53,13 @@ const EXPANDED_FIXED_COLUMNS = [
   ...SUMMARY_FIXED_COLUMNS.slice(4)
 ];
 const EMPTY_FILTERS = Object.freeze({
-  businessUnit: '',
-  productLine: '',
-  productSeries: '',
-  productType: '',
+  businessUnit: Object.freeze([]),
+  productLine: Object.freeze([]),
+  productSeries: Object.freeze([]),
+  productType: Object.freeze([]),
   inventoryStatus: Object.freeze([]),
   hasForecast: Object.freeze([]),
-  actionConclusion: ''
+  actionConclusion: Object.freeze([])
 });
 const FILTER_OPTIONS_DEFAULT = Object.freeze({
   businessUnit: [],
@@ -69,8 +70,12 @@ const FILTER_OPTIONS_DEFAULT = Object.freeze({
   hasForecast: SUPPLY_PLAN_FORECAST_STATUS_OPTIONS,
   actionConclusion: []
 });
-const ACTION_FILTER_FIELD = SUPPLY_PLAN_FILTER_FIELDS.find(({ key }) => key === 'actionConclusion');
-const PRIMARY_FILTER_FIELDS = SUPPLY_PLAN_FILTER_FIELDS.filter(({ key }) => key !== 'actionConclusion');
+const SUPPLY_PLAN_SHARED_FILTERS = Object.freeze([
+  ...SUPPLY_PLAN_FILTER_FIELDS.filter(({ key }) => key !== 'actionConclusion'),
+  { key: 'inventoryStatus', label: '库存状态' },
+  { key: 'hasForecast', label: '是否有预测' },
+  ...SUPPLY_PLAN_FILTER_FIELDS.filter(({ key }) => key === 'actionConclusion')
+]);
 
 function filtersEqual(left, right) {
   return Object.keys(EMPTY_FILTERS).every((key) => {
@@ -81,10 +86,6 @@ function filtersEqual(left, right) {
     const rightList = Array.isArray(rightValue) ? rightValue : [];
     return leftList.length === rightList.length && leftList.every((value, index) => value === rightList[index]);
   });
-}
-
-function hasActiveFilters(filters) {
-  return Object.values(filters).some((value) => Array.isArray(value) ? value.length > 0 : Boolean(value));
 }
 
 function filterQueryValues(filters) {
@@ -198,30 +199,6 @@ const SupplyPlanRelatedDetails = memo(function SupplyPlanRelatedDetails({ detail
         );
       })}
     </div>
-  );
-});
-
-const SupplyPlanCheckboxFilter = memo(function SupplyPlanCheckboxFilter({ label, options, value, onChange }) {
-  const selected = Array.isArray(value) ? value : [];
-  return (
-    <fieldset className="supply-plan-check-filter">
-      <legend>{label}</legend>
-      <div className="supply-plan-check-options">
-        {selected.length === 0 ? <span className="supply-plan-filter-all">全部</span> : null}
-        {options.map((option) => (
-          <label key={option}>
-            <input
-              type="checkbox"
-              checked={selected.includes(option)}
-              onChange={() => onChange(selected.includes(option)
-                ? selected.filter((item) => item !== option)
-                : [...selected, option])}
-            />
-            <span>{option}</span>
-          </label>
-        ))}
-      </div>
-    </fieldset>
   );
 });
 
@@ -390,6 +367,12 @@ export default function SupplyPlanBoard({ token, active }) {
   }, [filterDebouncing, filterDrafts, filters, resetTableScroll]);
 
   const filterQuery = useMemo(() => filterQueryValues(filters), [filters]);
+  const filterConfigs = useMemo(() => SUPPLY_PLAN_SHARED_FILTERS.map(({ key, label }) => ({
+    key,
+    label,
+    options: filterOptions[key] || [],
+    multiSelect: true
+  })), [filterOptions]);
 
   const loadSummary = useCallback(async ({ manual = false, page = currentPage, months = horizonMonths } = {}) => {
     const requestId = summaryRequestRef.current + 1;
@@ -678,6 +661,17 @@ export default function SupplyPlanBoard({ token, active }) {
     setFilterDebouncing(true);
   }
 
+  function clearFilters() {
+    setFilterDrafts(EMPTY_FILTERS);
+    setFilters(EMPTY_FILTERS);
+    setFilterDebouncing(false);
+    setCurrentPage(1);
+    setPageDraft('1');
+    resetTableScroll();
+    modelStatesRef.current = new Map();
+    setModelStates(new Map());
+  }
+
   function goToPage(page) {
     const safePage = Math.min(pagination.totalPages, Math.max(1, Number(page) || 1));
     setCurrentPage(safePage);
@@ -728,49 +722,14 @@ export default function SupplyPlanBoard({ token, active }) {
         </label>
       </div>
 
-      <div className="supply-plan-filter-bar" aria-label="供应计划筛选器">
-        {PRIMARY_FILTER_FIELDS.map(({ key, label }) => (
-          <label key={key}>
-            <span>{label}</span>
-            <select aria-label={label} value={filterDrafts[key]} onChange={(event) => changeFilter(key, event.target.value)}>
-              <option value="">全部{label}</option>
-              {(filterOptions[key] || []).map((value) => <option key={value} value={value}>{value}</option>)}
-            </select>
-          </label>
-        ))}
-        <SupplyPlanCheckboxFilter
-          label="库存状态"
-          options={SUPPLY_PLAN_INVENTORY_STATUS_OPTIONS}
-          value={filterDrafts.inventoryStatus}
-          onChange={(value) => changeFilter('inventoryStatus', value)}
-        />
-        <SupplyPlanCheckboxFilter
-          label="是否有销售预测"
-          options={SUPPLY_PLAN_FORECAST_STATUS_OPTIONS}
-          value={filterDrafts.hasForecast}
-          onChange={(value) => changeFilter('hasForecast', value)}
-        />
-        {ACTION_FILTER_FIELD ? (
-          <label>
-            <span>{ACTION_FILTER_FIELD.label}</span>
-            <select aria-label={ACTION_FILTER_FIELD.label} value={filterDrafts.actionConclusion} onChange={(event) => changeFilter('actionConclusion', event.target.value)}>
-              <option value="">全部{ACTION_FILTER_FIELD.label}</option>
-              {(filterOptions.actionConclusion || []).map((value) => <option key={value} value={value}>{value}</option>)}
-            </select>
-          </label>
-        ) : null}
-        <button type="button" className="ghost" disabled={!hasActiveFilters(filterDrafts)} onClick={() => {
-          setFilterDrafts(EMPTY_FILTERS);
-          setFilters(EMPTY_FILTERS);
-          setFilterDebouncing(false);
-          setCurrentPage(1);
-          setPageDraft('1');
-          resetTableScroll();
-          modelStatesRef.current = new Map();
-          setModelStates(new Map());
-        }}>清空筛选</button>
-        {filterDebouncing ? <span className="supply-plan-calculating" role="status">计算中...</span> : null}
-      </div>
+      <SharedFilterBar
+        filters={filterConfigs}
+        values={filterDrafts}
+        onChange={changeFilter}
+        onClear={clearFilters}
+        ariaLabel="供应计划筛选器"
+        status={filterDebouncing ? '计算中...' : ''}
+      />
 
       {message ? <p className="message">{message}</p> : null}
       {error ? <p className="message error">{error}</p> : null}

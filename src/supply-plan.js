@@ -170,15 +170,18 @@ export function groupSupplyPlanRows(rows = [], weekCount = Math.max(0, ...rows.m
 }
 
 export function matchesSupplyPlanFilters(row, filters = {}, omit = '') {
-  const scalarMatches = SUPPLY_PLAN_FILTER_FIELDS.every(({ key }) => {
-    if (key === omit || !text(filters[key])) return true;
+  const dimensionMatches = SUPPLY_PLAN_FILTER_FIELDS.every(({ key }) => {
+    const selectedValues = key === omit
+      ? []
+      : (Array.isArray(filters[key]) ? filters[key] : text(filters[key]).split(/[,，]/)).map(text).filter(Boolean);
+    if (selectedValues.length === 0) return true;
     if (key === 'businessUnit') {
-      return normalizeSupplyPlanBusinessUnit(row?.normalizedBusinessUnit || row?.businessUnit)
-        === normalizeSupplyPlanBusinessUnit(filters[key]);
+      const businessUnit = normalizeSupplyPlanBusinessUnit(row?.normalizedBusinessUnit || row?.businessUnit);
+      return selectedValues.some((value) => businessUnit === normalizeSupplyPlanBusinessUnit(value));
     }
-    return text(row?.[key]) === text(filters[key]);
+    return selectedValues.includes(text(row?.[key]));
   });
-  if (!scalarMatches) return false;
+  if (!dimensionMatches) return false;
 
   const inventoryStatuses = omit === 'inventoryStatus'
     ? []

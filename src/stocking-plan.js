@@ -232,3 +232,12 @@ export function filterStockingPlanRows(rows = [], filters = {}) {
     return true;
   });
 }
+
+export function buildStockingPlanFilterOptions(rows = [], filters = {}) {
+  return Object.fromEntries(['productLine', 'productSeries', 'productType', 'businessUnit'].map((field) => {
+    const linkedRows = filterStockingPlanRows(rows, { ...filters, [field]: [] });
+    const options = [...new Set(linkedRows.map((row) => text(row[field])).filter(Boolean))]
+      .sort((left, right) => left.localeCompare(right, 'zh-CN', { numeric: true }));
+    return [field, options];
+  }));
+}

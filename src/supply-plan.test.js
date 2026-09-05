@@ -104,6 +104,21 @@ test('供应计划按事业部、产品线和系列精确筛选', () => {
   );
 });
 
+test('供应计划产品维度和动作结论支持多选OR', () => {
+  const sourceRows = [
+    { productLine: '护理床', productSeries: 'A系列', actionConclusion: '正常流转', materialCode: '1' },
+    { productLine: '轮椅', productSeries: 'B系列', actionConclusion: '需要补货', materialCode: '2' },
+    { productLine: '拐杖', productSeries: 'C系列', actionConclusion: '停采观察', materialCode: '3' }
+  ];
+  assert.deepEqual(
+    filterSupplyPlanRows(sourceRows, {
+      productLine: ['护理床', '轮椅'],
+      actionConclusion: ['正常流转', '需要补货']
+    }).map((row) => row.materialCode),
+    ['1', '2']
+  );
+});
+
 test('事业部筛选按星号前名称合并选项并匹配原始明细', () => {
   const sourceRows = [
     { businessUnit: '国内事业部', materialCode: '1' },

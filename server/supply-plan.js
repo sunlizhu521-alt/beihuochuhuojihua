@@ -639,15 +639,16 @@ function selectedFilterValues(value) {
 }
 
 export function matchesSupplyPlanFilters(row, filters = {}, omittedField = '') {
-  const scalarMatches = FILTER_FIELDS.every((field) => {
-    if (field === omittedField || !text(filters[field])) return true;
+  const dimensionMatches = FILTER_FIELDS.every((field) => {
+    const selectedValues = field === omittedField ? [] : selectedFilterValues(filters[field]);
+    if (selectedValues.length === 0) return true;
     if (field === 'businessUnit') {
-      return normalizeSupplyPlanBusinessUnit(row.normalizedBusinessUnit || row.businessUnit)
-        === normalizeSupplyPlanBusinessUnit(filters[field]);
+      const businessUnit = normalizeSupplyPlanBusinessUnit(row.normalizedBusinessUnit || row.businessUnit);
+      return selectedValues.some((value) => businessUnit === normalizeSupplyPlanBusinessUnit(value));
     }
-    return text(row[field]) === text(filters[field]);
+    return selectedValues.includes(text(row[field]));
   });
-  if (!scalarMatches) return false;
+  if (!dimensionMatches) return false;
 
   const inventoryStatuses = omittedField === 'inventoryStatus' ? [] : selectedFilterValues(filters.inventoryStatus);
   const inventoryMatches = inventoryStatuses.length === 0 || inventoryStatuses.some((status) => (

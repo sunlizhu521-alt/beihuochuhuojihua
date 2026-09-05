@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  buildStockingPlanFilterOptions,
   buildStockingPlanRows,
   filterStockingPlanRows,
   groupStockingPlanRowsByMaterial
@@ -123,4 +124,20 @@ test('筛选后重新组装父子树，只保留命中子行并隐藏无子项�
   assert.equal(groups[0].materialCode, '1001');
   assert.deepEqual(groups[0].children.map((row) => row.businessUnit), ['海外事业一部']);
   assert.equal(groups[0].parent.onHandQty, 2);
+});
+
+test('备货需求计划筛选选项按其他已选条件联动', () => {
+  const rows = [
+    { productLine: '护理床', productSeries: 'A系列', productType: '成品', businessUnit: '国内事业部' },
+    { productLine: '轮椅', productSeries: 'B系列', productType: '成品', businessUnit: '国内事业部' },
+    { productLine: '护理床', productSeries: 'C系列', productType: '配件', businessUnit: '海外事业部' }
+  ];
+  const options = buildStockingPlanFilterOptions(rows, {
+    productLine: ['护理床'],
+    businessUnit: ['国内事业部']
+  });
+  assert.deepEqual(options.productLine, ['护理床', '轮椅']);
+  assert.deepEqual(options.productSeries, ['A系列']);
+  assert.deepEqual(options.productType, ['成品']);
+  assert.deepEqual(options.businessUnit, ['国内事业部', '海外事业部']);
 });

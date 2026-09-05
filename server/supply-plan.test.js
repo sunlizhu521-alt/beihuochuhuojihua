@@ -252,6 +252,21 @@ test('服务端支持销售产品分类、库存状态任一匹配和销售预�
   assert.deepEqual(unfiltered.filterOptions.hasForecast, ['有', '无']);
 });
 
+test('服务端产品维度和动作结论支持多选OR', () => {
+  const rows = [
+    { modelKey: 'A', productLine: '护理床', productSeries: 'A系列', actionConclusion: '正常流转', model: 'M1', materialCode: '1' },
+    { modelKey: 'B', productLine: '轮椅', productSeries: 'B系列', actionConclusion: '需要补货', model: 'M2', materialCode: '2' },
+    { modelKey: 'C', productLine: '拐杖', productSeries: 'C系列', actionConclusion: '停采观察', model: 'M3', materialCode: '3' }
+  ];
+  const filtered = paginateSupplyPlanData({ ok: true, rows, weeks: [] }, {
+    filters: {
+      productLine: ['护理床', '轮椅'],
+      actionConclusion: ['正常流转', '需要补货']
+    }
+  });
+  assert.deepEqual(filtered.rows.map((row) => row.model), ['M1', 'M2']);
+});
+
 test('服务端事业部筛选合并星号后的下级名称', () => {
   const rows = [
     { modelKey: '线\u001f系列\u001fM1', productLine: '线', productSeries: '系列', model: 'M1', businessUnit: '国内事业部', materialCode: '1' },
