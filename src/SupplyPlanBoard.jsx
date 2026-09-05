@@ -11,20 +11,12 @@ import {
   supplyPlanVirtualWindow
 } from './supply-plan.js';
 import { API } from './api-base.js';
-
-const CHANNELS = [
-  { key: 'overseasUs', label: '海外-美国' },
-  { key: 'overseasEurope', label: '海外-欧洲' },
-  { key: 'domestic', label: '国内' }
-];
-const PERIOD_FIELDS = [
-  ['onHandSellableDays', '在库量可销天数'],
-  ['dispatchToShelfDays', '发货到上架'],
-  ['transportDays', '海运/运输'],
-  ['bookingDays', '订舱/预约'],
-  ['averageLeadTimeDays', '平均交期'],
-  ['contractSigningDays', '合同签订']
-];
+import RouteSettingsPanel from './RouteSettingsPanel.jsx';
+import {
+  ROUTE_SETTINGS_EVENT,
+  loadRouteSettings,
+  saveRouteSettings
+} from './route-settings-storage.js';
 const HORIZON_MONTHS = [6, 9, 12, 15, 18, 21, 24];
 const WEEK_COLUMN_WIDTH = 72;
 const WEEK_OVERSCAN = 3;
@@ -114,21 +106,6 @@ function numberText(value, maximumFractionDigits = 2) {
 
 function timestampText(value) {
   return String(value || '').replace('T', ' ').replace(/\.\d{3}Z$/, '');
-}
-
-function derivedDays(settings = {}) {
-  const value = (field) => {
-    const number = Number(settings[field]);
-    return Number.isFinite(number) ? number : 0;
-  };
-  const spotDays = value('onHandSellableDays')
-    + value('dispatchToShelfDays')
-    + value('transportDays')
-    + value('bookingDays');
-  return {
-    spotDays,
-    fullChainDays: spotDays + value('averageLeadTimeDays') + value('contractSigningDays')
-  };
 }
 
 async function apiRequest(path, token, options = {}) {
@@ -358,70 +335,6 @@ function ActionConclusionRules() {
   );
 }
 
-function RouteSettings({ params, saving, meta, horizonMonths, onHorizonChange, onChange, onSave }) {
-  return (
-    <section className="supply-plan-route-wrap">
-      <div className="supply-plan-section-heading">
-        <div>
-          <h3>路由时间设置</h3>
-          <p>{meta.updatedAt
-            ? `腾讯云最后保存：${meta.updatedBy || '未知用户'}，${timestampText(meta.updatedAt)}`
-            : '暂无历史设置，当前使用系统默认值'}</p>
-        </div>
-        <div className="supply-plan-route-actions">
-          <label>
-            <span>月选视野</span>
-            <select aria-label="月选视野" value={horizonMonths} onChange={(event) => onHorizonChange(Number(event.target.value))}>
-              {HORIZON_MONTHS.map((months) => <option key={months} value={months}>{months} 个月</option>)}
-            </select>
-          </label>
-          <button type="button" className="primary" disabled={saving} onClick={onSave}>{saving ? '保存中...' : '保存'}</button>
-        </div>
-      </div>
-      <div className="supply-plan-route-table-wrap">
-        <table className="supply-plan-route-table">
-          <thead>
-            <tr>
-              <th>渠道</th>
-              <th>在库量可销天数</th>
-              <th>发货到上架</th>
-              <th>海运/运输</th>
-              <th>订舱/预约</th>
-              <th className="calculated">现货天数</th>
-              <th>平均交期</th>
-              <th>合同签订</th>
-              <th className="total">全链路天数</th>
-              <th className="total">安全库存天数</th>
-            </tr>
-          </thead>
-          <tbody>
-            {CHANNELS.map(({ key, label }) => {
-              const settings = params.channels[key];
-              const derived = derivedDays(settings);
-              return (
-                <tr key={key}>
-                  <th>{label}</th>
-                  {PERIOD_FIELDS.slice(0, 4).map(([field]) => (
-                    <td key={field}><input aria-label={`${label}${field}`} type="number" min="0" step="1" value={settings[field]} onChange={(event) => onChange(key, field, event.target.value)} /></td>
-                  ))}
-                  <td className="calculated"><output>{numberText(derived.spotDays)}</output></td>
-                  {PERIOD_FIELDS.slice(4).map(([field]) => (
-                    <td key={field}><input aria-label={`${label}${field}`} type="number" min="0" step="1" value={settings[field]} onChange={(event) => onChange(key, field, event.target.value)} /></td>
-                  ))}
-                  <td className="total"><output>{numberText(derived.fullChainDays)}</output></td>
-                  <td className="total"><input aria-label={`${label}safetyDays`} type="number" min="0" step="1" value={settings.safetyDays} onChange={(event) => onChange(key, 'safetyDays', event.target.value)} /></td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-      <p className="supply-plan-formula-note">现货天数 = 在库量可销天数 + 发货到上架 + 海运/运输 + 订舱/预约；全链路天数 = 现货天数 + 平均交期 + 合同签订。</p>
-      <ActionConclusionRules />
-    </section>
-  );
-}
-
 export default function SupplyPlanBoard({ token, active }) {
   const [rows, setRows] = useState([]);
   const [params, setParams] = useState(null);
@@ -496,7 +409,9 @@ export default function SupplyPlanBoard({ token, active }) {
       setRows(Array.isArray(payload.rows) ? payload.rows : []);
       setWeeks(Array.isArray(payload.weeks) ? payload.weeks : buildSupplyPlanWeeks(months));
       setHorizonMonths(payload.horizonMonths || months);
-      setParams(payload.params);
+      const storedParams = loadRouteSettings();
+      setParams(storedParams || payload.params);
+      if (!storedParams && payload.params) saveRouteSettings(payload.params);
       setPagination(payload.pagination || { page: 1, pageSize: SUPPLY_PLAN_PAGE_SIZE, totalItems: 0, totalPages: 1, totalChildItems: 0 });
       setFilterOptions(payload.filterOptions || FILTER_OPTIONS_DEFAULT);
       setCurrentPage(payload.pagination?.page || 1);
@@ -519,19 +434,34 @@ export default function SupplyPlanBoard({ token, active }) {
   }, [active, loadSummary]);
 
   useEffect(() => {
+    const syncParams = (event) => {
+      const next = event.type === ROUTE_SETTINGS_EVENT ? event.detail : loadRouteSettings();
+      if (next?.channels) setParams(next);
+    };
+    window.addEventListener('storage', syncParams);
+    window.addEventListener(ROUTE_SETTINGS_EVENT, syncParams);
+    return () => {
+      window.removeEventListener('storage', syncParams);
+      window.removeEventListener(ROUTE_SETTINGS_EVENT, syncParams);
+    };
+  }, []);
+
+  useEffect(() => {
     setVisibleWeekRange({ start: 0, end: Math.min(14, weeks.length) });
   }, [weeks.length]);
 
   const changeParam = useCallback((channelKey, field, rawValue) => {
     const value = rawValue === '' ? '' : Number(rawValue);
-    setParams((current) => ({
-      ...current,
+    const next = {
+      ...params,
       channels: {
-        ...current.channels,
-        [channelKey]: { ...current.channels[channelKey], [field]: value }
+        ...params.channels,
+        [channelKey]: { ...params.channels[channelKey], [field]: value }
       }
-    }));
-  }, []);
+    };
+    setParams(next);
+    saveRouteSettings(next);
+  }, [params]);
 
   async function saveParams() {
     if (!params || saving) return;
@@ -543,6 +473,7 @@ export default function SupplyPlanBoard({ token, active }) {
         body: JSON.stringify(params)
       });
       setParams(payload.params);
+      saveRouteSettings(payload.params);
       setMeta((current) => ({ ...current, updatedBy: payload.updatedBy || '', updatedAt: payload.updatedAt || '' }));
       setMessage(`路由时间已保存到腾讯云，保存人：${payload.updatedBy || '未知用户'}。`);
       modelDetailCacheRef.current.clear();
@@ -774,7 +705,20 @@ export default function SupplyPlanBoard({ token, active }) {
         </div>
       </div>
 
-      {params ? <RouteSettings params={params} saving={saving} meta={meta} horizonMonths={horizonMonths} onHorizonChange={changeHorizon} onChange={changeParam} onSave={saveParams} /> : null}
+      {params ? (
+        <RouteSettingsPanel
+          params={params}
+          saving={saving}
+          meta={meta}
+          horizonMonths={horizonMonths}
+          horizonOptions={HORIZON_MONTHS}
+          onHorizonChange={changeHorizon}
+          onChange={changeParam}
+          onSave={saveParams}
+        >
+          <ActionConclusionRules />
+        </RouteSettingsPanel>
+      ) : null}
 
       <div className="toolbar supply-plan-toolbar">
         <span className="section-count">全量跟单计划：共 {pagination.totalItems} 个产品型号，包含 {pagination.totalChildItems} 个事业部＋物料编码</span>

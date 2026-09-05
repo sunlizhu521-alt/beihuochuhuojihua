@@ -97,6 +97,7 @@ export function buildStockingPlanRows({
         productName: '',
         productLine: '',
         productSeries: '',
+        productType: '',
         model: '',
         monthForecasts: Array.from({ length: 6 }, () => 0),
         onHandQty: 0,
@@ -147,6 +148,7 @@ export function buildStockingPlanRows({
       productName: text(product.materialName || product.skuName) || row.productName,
       productLine: text(product.productLine),
       productSeries: text(product.productSeries),
+      productType: text(product.productType),
       model: text(product.model),
       forecastTotal: row.monthForecasts.reduce((sum, value) => sum + numberValue(value), 0),
       weeklyForecast: weeks.map((week) => numberValue(weeklyByKey.get(week.key)))
@@ -189,9 +191,10 @@ export function groupStockingPlanRowsByMaterial(rows = []) {
       model: firstValue('model'),
       parent: {
         rowKey: `parent\u001f${groupKey}`,
-        businessUnit: '全部',
+        businessUnit: '',
         productLine: firstValue('productLine'),
         productSeries: firstValue('productSeries'),
+        productType: firstValue('productType'),
         model: firstValue('model'),
         materialCode: first.materialCode,
         sku: firstValue('sku'),
@@ -209,4 +212,23 @@ export function groupStockingPlanRowsByMaterial(rows = []) {
     left.model.localeCompare(right.model, 'zh-CN', { numeric: true })
     || left.materialCode.localeCompare(right.materialCode, 'zh-CN', { numeric: true })
   ));
+}
+
+export function filterStockingPlanRows(rows = [], filters = {}) {
+  const multiMatches = (row, field) => {
+    const selected = Array.isArray(filters[field]) ? filters[field] : [];
+    return selected.length === 0 || selected.includes(text(row[field]));
+  };
+  return rows.filter((row) => {
+    if (!multiMatches(row, 'productLine')) return false;
+    if (!multiMatches(row, 'productSeries')) return false;
+    if (!multiMatches(row, 'productType')) return false;
+    if (!multiMatches(row, 'businessUnit')) return false;
+    if (filters.inventoryStatus === 'onHand' && numberValue(row.onHandQty) <= 0) return false;
+    if (filters.inventoryStatus === 'inTransit' && numberValue(row.inTransitQty) <= 0) return false;
+    if (filters.inventoryStatus === 'undelivered' && numberValue(row.undeliveredQty) <= 0) return false;
+    if (filters.hasForecast === 'yes' && numberValue(row.forecastTotal) <= 0) return false;
+    if (filters.hasForecast === 'no' && numberValue(row.forecastTotal) > 0) return false;
+    return true;
+  });
 }

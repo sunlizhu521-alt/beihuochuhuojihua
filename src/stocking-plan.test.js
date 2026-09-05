@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildStockingPlanRows, groupStockingPlanRowsByMaterial } from './stocking-plan.js';
+import {
+  buildStockingPlanRows,
+  filterStockingPlanRows,
+  groupStockingPlanRowsByMaterial
+} from './stocking-plan.js';
 
 const now = new Date('2026-09-05T00:00:00.000Z');
 
@@ -19,7 +23,7 @@ test('备货需求按事业部物料组装并生成型号物料父子汇总', ()
       { businessUnit: '国内事业部', materialCode: '1001', month1: 30 }
     ],
     productRows: [
-      { materialCode: '1001', sku: 'SKU-P', materialName: '商品名称', productLine: '护理床', productSeries: '星云', model: 'A1' }
+      { materialCode: '1001', sku: 'SKU-P', materialName: '商品名称', productLine: '护理床', productSeries: '星云', productType: '主力产品', model: 'A1' }
     ]
   }, now);
 
@@ -29,13 +33,14 @@ test('备货需求按事业部物料组装并生成型号物料父子汇总', ()
   assert.equal(plan.rows[0].productName, '商品名称');
   assert.equal(plan.rows[0].productLine, '护理床');
   assert.equal(plan.rows[0].productSeries, '星云');
+  assert.equal(plan.rows[0].productType, '主力产品');
   assert.equal(plan.rows[0].model, 'A1');
 
   const [group] = groupStockingPlanRowsByMaterial(plan.rows);
   assert.equal(group.model, 'A1');
   assert.equal(group.materialCode, '1001');
   assert.equal(group.children.length, 2);
-  assert.equal(group.parent.businessUnit, '全部');
+  assert.equal(group.parent.businessUnit, '');
   assert.deepEqual(group.parent.monthForecasts, [70, 10, 0, 0, 0, 0]);
   assert.equal(group.parent.onHandQty, 30);
   assert.equal(group.parent.inTransitQty, 5);
@@ -79,4 +84,23 @@ test('备货需求计划忽略斜杠等非物料占位行', () => {
   }, new Date('2026-09-05T00:00:00Z'));
 
   assert.equal(result.rows.length, 0);
+});
+
+test('备货需求计划先按多选维度、库存状态和预测状态过滤明细', () => {
+  const rows = [
+    { productLine: '护理床', productSeries: '星云', productType: '主力产品', businessUnit: '国内事业部', onHandQty: 3, inTransitQty: 0, undeliveredQty: 0, forecastTotal: 8 },
+    { productLine: '护理床', productSeries: '星河', productType: '培育产品', businessUnit: '海外事业一部', onHandQty: 0, inTransitQty: 4, undeliveredQty: 0, forecastTotal: 0 },
+    { productLine: '制氧机', productSeries: '轻氧', productType: '主力产品', businessUnit: '国内事业部', onHandQty: 0, inTransitQty: 0, undeliveredQty: 2, forecastTotal: 6 }
+  ];
+
+  assert.deepEqual(filterStockingPlanRows(rows, {
+    productLine: ['护理床'],
+    productSeries: [],
+    productType: ['主力产品'],
+    businessUnit: ['国内事业部'],
+    inventoryStatus: 'onHand',
+    hasForecast: 'yes'
+  }), [rows[0]]);
+  assert.deepEqual(filterStockingPlanRows(rows, { inventoryStatus: 'inTransit', hasForecast: 'no' }), [rows[1]]);
+  assert.deepEqual(filterStockingPlanRows(rows, { inventoryStatus: 'undelivered', hasForecast: 'yes' }), [rows[2]]);
 });
