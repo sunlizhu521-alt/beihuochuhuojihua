@@ -65,7 +65,7 @@ const StockingPlanParentRow = memo(function StockingPlanParentRow({
           className="stocking-plan-date-input"
           aria-label={`期望交期 ${row.materialCode}`}
           value={expectedDelivery}
-          onChange={(event) => onExpectedDeliveryChange(row.materialCode, event.target.value)}
+          onInput={(event) => onExpectedDeliveryChange(row.materialCode, event.currentTarget.value)}
         />
       </td>
     </tr>
@@ -99,7 +99,7 @@ const StockingPlanChildRow = memo(function StockingPlanChildRow({
           className="stocking-plan-date-input"
           aria-label={`期望交期 ${row.businessUnit} ${row.materialCode}`}
           value={expectedDelivery}
-          onChange={(event) => onExpectedDeliveryChange(row.materialCode, event.target.value)}
+          onInput={(event) => onExpectedDeliveryChange(row.materialCode, event.currentTarget.value)}
         />
       </td>
     </tr>
