@@ -50,3 +50,13 @@ test('月预测拆周后数量守恒且按物料分组保持跨事业部行连�
   const groups = groupStockingPlanRowsByMaterial(plan.rows);
   assert.deepEqual(groups.map((group) => [group.materialCode, group.rows.length]), [['1001', 2], ['1002', 1]]);
 });
+
+test('备货需求计划忽略斜杠等非物料占位行', () => {
+  const result = buildStockingPlanRows({
+    inventoryRows: [{ businessUnit: '国内事业部', materialCode: '/', onHandQty: 10 }],
+    undeliveredRows: [{ businessUnit: '海外事业一部', materialCode: '-', undeliveredQty: 20 }],
+    forecastRows: [{ businessUnit: '海外事业二部', materialCode: 'N/A', month1: 30 }]
+  }, new Date('2026-09-05T00:00:00Z'));
+
+  assert.equal(result.rows.length, 0);
+});

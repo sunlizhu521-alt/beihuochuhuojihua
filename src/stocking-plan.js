@@ -16,7 +16,8 @@ function numberValue(value) {
 }
 
 function materialCodeValue(value) {
-  return text(value).replace(/\.0$/, '');
+  const normalized = text(value).replace(/\.0$/, '');
+  return ['/', '-', '--', 'N/A', 'NA'].includes(normalized.toUpperCase()) ? '' : normalized;
 }
 
 function rowKey(businessUnit, materialCode) {
