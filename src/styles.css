@@ -8662,6 +8662,41 @@ th {
   background: #edf6ff;
 }
 
+.stocking-plan-table .stocking-plan-parent-row td {
+  background: #eef6ff;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.stocking-plan-table .stocking-plan-child-row td {
+  background: #fff;
+  color: #475569;
+}
+
+.stocking-plan-business-cell {
+  text-align: left !important;
+}
+
+.stocking-plan-child-row .stocking-plan-business-cell {
+  padding-left: 32px;
+}
+
+.stocking-plan-expand-button {
+  width: 24px;
+  min-width: 24px;
+  margin-right: 5px;
+  padding: 2px;
+  border: 0;
+  background: transparent;
+  color: #2563a8;
+  box-shadow: none;
+  font-size: 11px;
+}
+
+.stocking-plan-expand-button:hover {
+  background: #dbeafe;
+}
+
 .stocking-plan-table .numeric-cell {
   text-align: right;
   font-variant-numeric: tabular-nums;

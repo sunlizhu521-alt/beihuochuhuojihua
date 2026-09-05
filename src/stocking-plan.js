@@ -101,8 +101,7 @@ export function buildStockingPlanRows({
         monthForecasts: Array.from({ length: 6 }, () => 0),
         onHandQty: 0,
         inTransitQty: 0,
-        undeliveredQty: 0,
-        finishedQty: 0
+        undeliveredQty: 0
       });
     }
     return rowsByKey.get(key);
@@ -120,7 +119,6 @@ export function buildStockingPlanRows({
     const row = ensureRow(source);
     if (!row) return;
     row.undeliveredQty += numberValue(source.undeliveredQty);
-    row.finishedQty += numberValue(source.finishedQty);
     row.sku ||= text(source.sku);
     row.productName ||= text(source.skuName || source.materialName);
   });
@@ -155,23 +153,9 @@ export function buildStockingPlanRows({
     };
   });
 
-  const totalsByMaterial = new Map();
-  rows.forEach((row) => {
-    const totals = totalsByMaterial.get(row.materialCode) || { forecastQty: 0, stockQty: 0 };
-    totals.forecastQty += row.forecastTotal;
-    totals.stockQty += row.onHandQty + row.inTransitQty + row.undeliveredQty + row.finishedQty;
-    totalsByMaterial.set(row.materialCode, totals);
-  });
-
   return {
     weeks,
-    rows: rows.map((row) => {
-      const totals = totalsByMaterial.get(row.materialCode);
-      return {
-        ...row,
-        suggestedPurchaseQty: Math.max(0, totals.forecastQty - totals.stockQty)
-      };
-    }).sort((left, right) => (
+    rows: rows.sort((left, right) => (
       left.materialCode.localeCompare(right.materialCode, 'zh-CN', { numeric: true })
       || left.businessUnit.localeCompare(right.businessUnit, 'zh-CN')
     ))
@@ -181,9 +165,48 @@ export function buildStockingPlanRows({
 export function groupStockingPlanRowsByMaterial(rows = []) {
   const groups = new Map();
   rows.forEach((row) => {
-    const list = groups.get(row.materialCode) || [];
+    const groupKey = `${row.model || ''}\u001f${row.materialCode}`;
+    const list = groups.get(groupKey) || [];
     list.push(row);
-    groups.set(row.materialCode, list);
+    groups.set(groupKey, list);
   });
-  return [...groups.entries()].map(([materialCode, groupRows]) => ({ materialCode, rows: groupRows }));
+  return [...groups.entries()].map(([groupKey, children]) => {
+    const first = children[0];
+    const monthForecasts = STOCKING_PLAN_MONTH_FIELDS.map((_field, index) => (
+      children.reduce((sum, row) => sum + numberValue(row.monthForecasts[index]), 0)
+    ));
+    const weeklyForecast = (first.weeklyForecast || []).map((_value, index) => (
+      children.reduce((sum, row) => sum + numberValue(row.weeklyForecast[index]), 0)
+    ));
+    const onHandQty = children.reduce((sum, row) => sum + numberValue(row.onHandQty), 0);
+    const inTransitQty = children.reduce((sum, row) => sum + numberValue(row.inTransitQty), 0);
+    const undeliveredQty = children.reduce((sum, row) => sum + numberValue(row.undeliveredQty), 0);
+    const forecastTotal = monthForecasts.reduce((sum, value) => sum + value, 0);
+    const firstValue = (field) => children.find((row) => text(row[field]))?.[field] || '';
+    return {
+      key: groupKey,
+      materialCode: first.materialCode,
+      model: firstValue('model'),
+      parent: {
+        rowKey: `parent\u001f${groupKey}`,
+        businessUnit: '全部',
+        productLine: firstValue('productLine'),
+        productSeries: firstValue('productSeries'),
+        model: firstValue('model'),
+        materialCode: first.materialCode,
+        sku: firstValue('sku'),
+        productName: firstValue('productName'),
+        monthForecasts,
+        weeklyForecast,
+        onHandQty,
+        inTransitQty,
+        undeliveredQty,
+        suggestedPurchaseQty: Math.max(0, forecastTotal - onHandQty - inTransitQty - undeliveredQty)
+      },
+      children
+    };
+  }).sort((left, right) => (
+    left.model.localeCompare(right.model, 'zh-CN', { numeric: true })
+    || left.materialCode.localeCompare(right.materialCode, 'zh-CN', { numeric: true })
+  ));
 }
