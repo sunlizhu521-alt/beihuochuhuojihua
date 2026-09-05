@@ -54,22 +54,36 @@ function filterOptions(rows, field) {
 }
 
 const StockingPlanMultiFilter = memo(function StockingPlanMultiFilter({ field, label, options, selected, onChange }) {
+  const visibleSelected = selected.slice(0, 2);
   return (
-    <details className="stocking-plan-filter-multi">
-      <summary>{label}{selected.length ? `（${selected.length}）` : ''}</summary>
-      <div className="stocking-plan-filter-options">
-        {options.length ? options.map((option) => (
-          <label key={option}>
-            <input
-              type="checkbox"
-              checked={selected.includes(option)}
-              onChange={(event) => onChange(field, option, event.target.checked)}
-            />
-            <span>{option}</span>
-          </label>
-        )) : <span className="stocking-plan-filter-empty">暂无选项</span>}
-      </div>
-    </details>
+    <div className="stocking-plan-multi-field">
+      <span>{label}</span>
+      <details className="stocking-plan-filter-multi">
+        <summary aria-label={label}>
+          <span className="stocking-plan-selected-values">
+            {visibleSelected.length ? visibleSelected.map((value) => (
+              <span className="stocking-plan-selected-tag" key={value}>{value}</span>
+            )) : <span className="stocking-plan-filter-all">全部{label}</span>}
+            {selected.length > visibleSelected.length ? (
+              <span className="stocking-plan-selected-count">+{selected.length - visibleSelected.length}</span>
+            ) : null}
+          </span>
+        </summary>
+        <div className="stocking-plan-filter-options" role="group" aria-label={`${label}选项`}>
+          {options.length ? options.map((option) => (
+            <label key={option}>
+              <input
+                type="checkbox"
+                aria-label={`${label}：${option}`}
+                checked={selected.includes(option)}
+                onChange={(event) => onChange(field, option, event.target.checked)}
+              />
+              <span>{option}</span>
+            </label>
+          )) : <span className="stocking-plan-filter-empty">暂无选项</span>}
+        </div>
+      </details>
+    </div>
   );
 });
 
@@ -320,7 +334,7 @@ export default function StockingPlanPage({ token, active }) {
         onChange={changeRouteParam}
         onSave={saveRouteParams}
       />
-      <section className="stocking-plan-filter-panel" aria-label="备货需求计划筛选器">
+      <section className="supply-plan-filter-bar stocking-plan-filter-panel" aria-label="备货需求计划筛选器">
         {MULTI_FILTERS.map(([field, label]) => (
           <StockingPlanMultiFilter
             key={field}

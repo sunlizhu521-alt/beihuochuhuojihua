@@ -103,4 +103,24 @@ test('备货需求计划先按多选维度、库存状态和预测状态过滤�
   }), [rows[0]]);
   assert.deepEqual(filterStockingPlanRows(rows, { inventoryStatus: 'inTransit', hasForecast: 'no' }), [rows[1]]);
   assert.deepEqual(filterStockingPlanRows(rows, { inventoryStatus: 'undelivered', hasForecast: 'yes' }), [rows[2]]);
+  assert.deepEqual(
+    filterStockingPlanRows(rows, { productSeries: ['星云', '轻氧'] }),
+    [rows[0], rows[2]],
+    '同一筛选器内的多个值应按 OR 关系保留'
+  );
+});
+
+test('筛选后重新组装父子树，只保留命中子行并隐藏无子项父行', () => {
+  const rows = [
+    { rowKey: '国内\u001f1001', businessUnit: '国内事业部', productLine: '护理床', productSeries: '星云', productType: '主力产品', model: 'A1', materialCode: '1001', monthForecasts: [1, 0, 0, 0, 0, 0], weeklyForecast: [1], onHandQty: 1, inTransitQty: 0, undeliveredQty: 0, forecastTotal: 1 },
+    { rowKey: '海外\u001f1001', businessUnit: '海外事业一部', productLine: '护理床', productSeries: '星云', productType: '主力产品', model: 'A1', materialCode: '1001', monthForecasts: [2, 0, 0, 0, 0, 0], weeklyForecast: [2], onHandQty: 2, inTransitQty: 0, undeliveredQty: 0, forecastTotal: 2 },
+    { rowKey: '国内\u001f2001', businessUnit: '国内事业部', productLine: '制氧机', productSeries: '轻氧', productType: '培育产品', model: 'B1', materialCode: '2001', monthForecasts: [3, 0, 0, 0, 0, 0], weeklyForecast: [3], onHandQty: 3, inTransitQty: 0, undeliveredQty: 0, forecastTotal: 3 }
+  ];
+  const filtered = filterStockingPlanRows(rows, { businessUnit: ['海外事业一部'] });
+  const groups = groupStockingPlanRowsByMaterial(filtered);
+
+  assert.equal(groups.length, 1);
+  assert.equal(groups[0].materialCode, '1001');
+  assert.deepEqual(groups[0].children.map((row) => row.businessUnit), ['海外事业一部']);
+  assert.equal(groups[0].parent.onHandQty, 2);
 });

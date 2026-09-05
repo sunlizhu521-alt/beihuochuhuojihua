@@ -8621,31 +8621,37 @@ th {
 }
 
 .stocking-plan-filter-panel {
-  display: flex;
   flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 8px;
   margin: 12px 0;
-  padding: 10px;
-  border: 1px solid #dce3ec;
-  border-radius: 8px;
-  background: #f8fafc;
+  overflow: visible;
+}
+
+.stocking-plan-multi-field {
+  position: relative;
+  display: grid;
+  gap: 4px;
+  width: 220px;
+  min-width: 220px;
+  color: #526174;
+  font-size: .72rem;
+  font-weight: 700;
 }
 
 .stocking-plan-filter-multi {
   position: relative;
-  min-width: 132px;
 }
 
-.stocking-plan-filter-multi summary,
-.stocking-plan-filter-select select {
-  min-width: 132px;
-  height: 34px;
-  padding: 7px 10px;
+.stocking-plan-filter-multi summary {
+  display: flex;
+  width: 100%;
+  height: 32px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 3px 28px 3px 6px;
   border: 1px solid #cbd5e1;
-  border-radius: 6px;
+  border-radius: 4px;
   background: #fff;
-  color: #334155;
+  color: #172033;
   cursor: pointer;
   list-style: none;
 }
@@ -8655,9 +8661,49 @@ th {
 }
 
 .stocking-plan-filter-multi summary::after {
-  float: right;
+  position: absolute;
+  right: 9px;
   content: '▾';
   color: #64748b;
+}
+
+.stocking-plan-selected-values {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+}
+
+.stocking-plan-selected-tag,
+.stocking-plan-selected-count {
+  flex: 0 1 auto;
+  max-width: 82px;
+  overflow: hidden;
+  padding: 2px 6px;
+  border: 1px solid #bfdbfe;
+  border-radius: 4px;
+  background: #eff6ff;
+  color: #205e9c;
+  font-size: .68rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stocking-plan-selected-count {
+  flex: 0 0 auto;
+  border-color: #dce3ec;
+  background: #f8fafc;
+  color: #64748b;
+}
+
+.stocking-plan-filter-all {
+  overflow: hidden;
+  color: #94a3b8;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .stocking-plan-filter-options {
@@ -8667,8 +8713,8 @@ th {
   left: 0;
   display: grid;
   gap: 5px;
-  width: max-content;
-  min-width: 190px;
+  width: 100%;
+  min-width: 220px;
   max-height: 260px;
   overflow: auto;
   padding: 9px;
@@ -8687,15 +8733,24 @@ th {
   cursor: pointer;
 }
 
+.stocking-plan-filter-options input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: #337fc8;
+}
+
 .stocking-plan-filter-empty {
   color: #94a3b8;
 }
 
 .stocking-plan-filter-select {
   display: grid;
-  gap: 3px;
-  color: #64748b;
-  font-size: 11px;
+  gap: 4px;
+  min-width: 170px;
+  color: #526174;
+  font-size: .72rem;
+  font-weight: 700;
 }
 
 .stocking-plan-table-wrap {
